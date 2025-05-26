@@ -1,5 +1,5 @@
 import { charge } from "@chargebee/nextjs";
-import { parseQueryString, type ChargeInput} from "chargebee-init-core";
+import { type ChargeInput, parseQueryString } from "chargebee-init-core";
 import type { NextRequest } from "next/server.js";
 
 export const GET = charge({

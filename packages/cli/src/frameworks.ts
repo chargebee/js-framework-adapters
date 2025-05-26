@@ -16,7 +16,7 @@ export const supportedFrameworks: Record<Framework, FrameworkInfo> = {
 	nextjs: {
 		packageName: "next",
 		minVersion: "15",
-		description: `App Router officially supported, Pages Router may work`,
+		description: `Only App Router is supported at the moment`,
 		dependencies: ["@chargebee/nextjs:^0.1.0"],
 	},
 	express: {

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import type { Framework, Features } from "./frameworks";
+import type { Features, Framework } from "./frameworks";
 
 const pathPrefix = "chargebee";
 
@@ -15,6 +15,8 @@ export const copyTemplates = (
 
 	if (!fs.existsSync(srcDir)) {
 		srcDir = path.join(targetDir, "src", "app");
+	}
+	if (!fs.existsSync(srcDir)) {
 		throw new Error(`Could not find directories app or src/app`);
 	}
 

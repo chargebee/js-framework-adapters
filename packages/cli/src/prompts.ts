@@ -1,15 +1,15 @@
-import Enquirer from "enquirer";
-import * as colors from "ansi-colors";
 import fs from "node:fs";
+import * as colors from "ansi-colors";
+import Enquirer from "enquirer";
 import {
-	frameworkChecks,
-	preflightChecks,
-	type PreflightResponse,
 	type CheckError,
+	frameworkChecks,
+	type PreflightResponse,
+	preflightChecks,
 } from "./checks";
 import type { DetectedFramework } from "./frameworks";
+import { updateDependencies, writePackageJson } from "./package";
 import { copyTemplates } from "./templates";
-import { writePackageJson, updateDependencies } from "./package";
 
 export const enquirer = new Enquirer();
 

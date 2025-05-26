@@ -1,6 +1,6 @@
-import type { ChargeRequest } from "chargebee-init-core";
 import Chargebee from "chargebee";
-import { NextMiddlewareResult } from "next/dist/server/web/types.js";
+import type { ChargeRequest } from "chargebee-init-core";
+import type { NextMiddlewareResult } from "next/dist/server/web/types.js";
 import {
 	type NextMiddleware,
 	type NextRequest,

@@ -19,8 +19,7 @@
     "watch": "pnpm -r watch",
     "link:all": "for p in packages/*; do pushd $p; npm link; popd; done",
     "clean": "rm -rf dist packages/*/dist",
-    "fmt": "biome format --write",
-    "lint": "biome lint",
+    "lint": "biome check",
     "pnpm:devPreinstall": "pre-commit install"
   },
   "dependencies": {

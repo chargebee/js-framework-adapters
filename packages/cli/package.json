@@ -22,7 +22,6 @@
     "prebuild": "rm -rf dist && mkdir -p dist/templates",
     "build": "tsc",
     "postbuild": "for n in nextjs; do cp -R ../$n/templates dist/templates/$n/; done;",
-    "watch": "pnpm build && tsc --watch",
-    "//build": "esbuild ./src/* ./bin/* --outdir=./dist --platform=node --target=node18 --format=cjs --loader:.template.ts=text"
+    "watch": "pnpm build && tsc --watch"
   }
 }

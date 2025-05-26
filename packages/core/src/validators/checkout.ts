@@ -1,5 +1,3 @@
-import type * as Chargebee from "chargebee";
-
 import { z } from "zod";
 
 export const customerSchema = z.object({
