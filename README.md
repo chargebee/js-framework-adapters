@@ -33,9 +33,19 @@ pnpm watch
 
 # Link packages
 pnpm link:all
+
+# Run chargebee-init in the target folder
+cd nextjs-app
+npx chargebee-init
+
+# Use the linked packages
+npm link @chargebee/nextjs chargebee-init-core
+
+# Build and start your app server!
 ```
 
 Once the packages are built and installed, running `npm|pnpm|bun` install _should_ use the local version of the package. The `chargebee-init` CLI should now be available in the global bin directory (if configured correctly), or can be invoked via `npx chargebee-init`
+
 
 #### Linking/Unlinking packages
 
@@ -47,6 +57,8 @@ To verify if the packages are linked as expected, run `npm ls -g --link` which s
 ├── chargebee-init-core@ -> ./../../../Users/srinath/projects/js-framework-adapters/packages/core
 └── chargebee-init@ -> ./../../../Users/srinath/projects/js-framework-adapters/packages/cli
 ```
+
+
 
 To unlink packages, run `npm unlink --global --no-save <package name>`
 
