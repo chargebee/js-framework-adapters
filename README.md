@@ -24,8 +24,10 @@ pnpm i
 
 To test the CLI and framework adapters locally, we first build the required packages and then link them so that `npm` can recognise the locally available versions. This causes minimal disruption to the dev workflow as well.
 
+#### Building required packages
+
 ```
-# Build all the required packages from root
+# Build all the required packages from this repo
 pnpm build
 
 # Watch for changes and compile
@@ -33,19 +35,33 @@ pnpm watch
 
 # Link packages
 pnpm link:all
-
-# Run chargebee-init in the target folder
-cd nextjs-app
-npx chargebee-init
-
-# Use the linked packages
-npm link @chargebee/nextjs chargebee-init-core
-
-# Build and start your app server!
 ```
 
 Once the packages are built and installed, running `npm|pnpm|bun` install _should_ use the local version of the package. The `chargebee-init` CLI should now be available in the global bin directory (if configured correctly), or can be invoked via `npx chargebee-init`
 
+#### Running chargebee-init
+
+`chargebee-init` expects an existing app which uses one of the supported frameworks. Run the following commands in the app directory:
+
+```
+# Your existing app
+cd nextjs-app
+
+# Running chargebee-init that was linked previously using "pnpm link:all"
+npx chargebee-init
+
+# Install the required packages that was linked previously using "pnpm link:all"
+npm link @chargebee/nextjs chargebee-init-core
+```
+
+The last step is to pass the required secrets to the API client. Depending on your app and framework, this can be as simple as adding them to the `.env` file, or by passing the secrets to replace the `process.env.*` variables at build time.
+
+```
+CHARGEBEE_API_KEY=
+CHARGEBEE_SITE=
+```
+
+Congrats! Your app should now be ready to use Chargebee services. Start your server, have a look at the generated code and make the required changes. Happy hacking :-)
 
 #### Linking/Unlinking packages
 
@@ -57,8 +73,6 @@ To verify if the packages are linked as expected, run `npm ls -g --link` which s
 ├── chargebee-init-core@ -> ./../../../Users/srinath/projects/js-framework-adapters/packages/core
 └── chargebee-init@ -> ./../../../Users/srinath/projects/js-framework-adapters/packages/cli
 ```
-
-
 
 To unlink packages, run `npm unlink --global --no-save <package name>`
 
