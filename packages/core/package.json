@@ -1,0 +1,18 @@
+{
+  "name": "chargebee-init-core",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.ts",
+  "exports": {
+    "types": "./src/index.ts",
+    "default": "./dist/index.js"
+  },
+  "dependencies": {
+    "chargebee": "^3.6.1",
+    "qs": "^6.14.0",
+    "zod": "^3.25.20"
+  },
+  "devDependencies": {
+    "@types/qs": "^6.9.18"
+  }
+}

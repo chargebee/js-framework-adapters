@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": ["src"],
+  "compilerOptions": {
+    "baseUrl": "./",
+    "outDir": "dist",
+    "paths": {
+      "@chargebee/nextjs": ["nextjs/src/index.js"]
+    },
+  },
+  "references": [
+    { "path": "../core" }
+  ]
+}

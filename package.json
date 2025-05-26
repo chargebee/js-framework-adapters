@@ -1,0 +1,31 @@
+{
+  "name": "@chargebee/js-framework-adapters",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=10"
+  },
+  "packageManager": "pnpm@10.10.0",
+  "devDependencies": {
+    "@biomejs/biome": "2.0.0-beta.5",
+    "@sindresorhus/tsconfig": "^7.0.0",
+    "@types/node": "22.15.2",
+    "esbuild": "^0.25.4",
+    "typescript": "^5.8.3"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "watch": "pnpm -r watch",
+    "link:all": "for p in packages/*; do pushd $p; npm link; popd; done",
+    "clean": "rm -rf dist packages/*/dist",
+    "fmt": "biome format --write",
+    "lint": "biome lint",
+    "pnpm:devPreinstall": "pre-commit install"
+  },
+  "dependencies": {
+    "@chargebee/nextjs": "link:packages/nextjs",
+    "chargebee-init": "link:packages/cli",
+    "chargebee-init-core": "link:packages/core"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "workbench.editor.customLabels.patterns": {
+    "**/packages/*/src/**/page.ts": "${dirname(1)}/${dirname(0)}/page",
+    "**/index.ts": "${dirname(1)}/${dirname(0)}/index"
+  },
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "editor.tabSize": 2,
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "biomejs.biome"
+}

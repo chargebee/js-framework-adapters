@@ -1,0 +1,11 @@
+{
+	"extends": "@sindresorhus/tsconfig",
+	"compilerOptions": {
+		"baseUrl": "./",
+		"outDir": "dist",
+		"target": "ES2022",
+		"isolatedModules": true,
+		"noPropertyAccessFromIndexSignature": false,
+		"noUnusedLocals": false,
+	}
+}
