@@ -1,0 +1,10 @@
+packages:
+  - packages/*
+onlyBuiltDependencies:
+  - '@biomejs/biome'
+  - core-js
+  - esbuild
+overrides:
+  chargebee-init: link:packages/cli
+  chargebee-init-core: link:packages/core
+  '@chargebee/nextjs': link:packages/nextjs
