@@ -59,6 +59,7 @@ The last step is to pass the required secrets to the API client. Depending on yo
 ```
 CHARGEBEE_API_KEY=
 CHARGEBEE_SITE=
+CHARGEBEE_WEBHOOK_AUTH="username:password"
 ```
 
 Congrats! Your app should now be ready to use Chargebee services. Start your server, have a look at the generated code and make the required changes. Happy hacking :-)

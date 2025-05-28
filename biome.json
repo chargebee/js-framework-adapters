@@ -10,7 +10,11 @@
 	},
 	"formatter": {
 		"enabled": true,
-		"includes": ["packages/**/src/**", "packages/**/bin/**"]
+		"includes": [
+			"packages/**/src/**",
+			"packages/**/bin/**",
+			"packages/**/templates/**"
+		]
 	},
 	"linter": {
 		"enabled": true,
