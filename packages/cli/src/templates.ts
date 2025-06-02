@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import type { Features, Framework } from "./frameworks";
+import type { Features, Framework } from "./frameworks.js";
 
 const pathPrefix = "chargebee";
 

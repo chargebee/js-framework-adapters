@@ -19,9 +19,9 @@ function splitUserPass(input: string = ""): string[] {
 	return [user, pass];
 }
 
-export function checkBasicAuth(
+export function validateBasicAuth(
 	webhookUserPass: string | undefined,
-	authHeader: string | null,
+	authHeader: string | null | undefined,
 ) {
 	const [WEBHOOK_USER, WEBHOOK_PASS] = splitUserPass(webhookUserPass);
 	if (!WEBHOOK_USER || !WEBHOOK_PASS) {

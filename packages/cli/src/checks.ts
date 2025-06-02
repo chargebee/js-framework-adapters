@@ -1,13 +1,13 @@
 import type { PackageManifest } from "@pnpm/types";
-import * as colors from "ansi-colors";
+import colors from "ansi-colors";
 import {
 	type DetectedFramework,
 	detectFramework,
 	satisfiesMinVersion,
 	supportedFrameworks,
-} from "./frameworks";
-import { isCleanTree } from "./git";
-import { getPackageJson } from "./package";
+} from "./frameworks.js";
+import { isCleanTree } from "./git.js";
+import { getPackageJson } from "./package.js";
 
 export type Checks = "git" | "package.json" | "framework";
 

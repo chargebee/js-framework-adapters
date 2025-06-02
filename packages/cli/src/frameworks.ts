@@ -10,6 +10,7 @@ export interface FrameworkInfo {
 	minVersion: string; // Minimum supported semver
 	description: string; // Additional text to display to the user
 	dependencies: string[]; // List of dependencies to add to package.json
+	postInstallSteps: () => void;
 }
 
 export const supportedFrameworks: Record<Framework, FrameworkInfo> = {
@@ -18,12 +19,14 @@ export const supportedFrameworks: Record<Framework, FrameworkInfo> = {
 		minVersion: "15",
 		description: `Only App Router is supported at the moment`,
 		dependencies: ["@chargebee/nextjs:^0.1.0"],
+		postInstallSteps: () => ``,
 	},
 	express: {
 		packageName: "express",
 		minVersion: "4",
 		description: "",
 		dependencies: ["@chargebee/express:^0.1.0"],
+		postInstallSteps: () => ``,
 	},
 } as const;
 

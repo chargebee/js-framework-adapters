@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { PackageManifest } from "@pnpm/types";
-import type { DetectedFramework } from "./frameworks";
+import type { DetectedFramework } from "./frameworks.js";
 
 export function getPackageJson(dir: string): PackageManifest | undefined {
 	try {

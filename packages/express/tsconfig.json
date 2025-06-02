@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": ["src"],
+  "compilerOptions": {
+    "baseUrl": "./",
+    "rootDir": "./src",
+    "outDir": "dist",
+    "paths": {
+      "@chargebee/express": ["express/src/index.js"]
+    },
+  },
+  "references": [
+    { "path": "../core" }
+  ]
+}
