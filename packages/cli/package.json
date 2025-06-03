@@ -25,7 +25,7 @@
   "scripts": {
     "prebuild": "rm -rf dist && mkdir -p dist/templates",
     "build": "tsc",
-    "postbuild": "for n in nextjs; do cp -R ../$n/templates dist/templates/$n/; done;",
+    "postbuild": "for n in nextjs express; do cp -R ../$n/templates dist/templates/$n/; done;",
     "watch": "pnpm build && tsc --watch"
   }
 }

@@ -1,13 +1,46 @@
-import { type Chargebee, validateBasicAuth } from "chargebee-init-core";
+import { charge, manage, subscribe } from "@chargebee/express";
+import {
+	type Chargebee,
+	type ChargeInput,
+	type ManageInput,
+	parseQueryString,
+	type SubscriptionInput,
+	validateBasicAuth,
+} from "chargebee-init-core";
 import type { Application, Request, Response } from "express";
 
-const prefix = `chargebee`;
+const apiKey = process.env.CHARGEBEE_API_KEY!;
+const site = process.env.CHARGEBEE_SITE!;
+const webhookBasicAuth = process.env.CHARGEBEE_WEBHOOK_AUTH;
 
-async function charge(req: Request, res: Response) {}
+const routePrefix = `chargebee`;
 
-async function manage(req: Request, res: Response) {}
+const chargeController = charge({
+	apiKey,
+	site,
+	apiPayload: (req: Request) => {
+		const queryParams = parseQueryString(new URL(req.url));
+		return queryParams as ChargeInput;
+	},
+});
 
-async function subscribe(req: Request, res: Response) {}
+const subscribeController = subscribe({
+	apiKey,
+	site,
+	apiPayload: (req: Request) => {
+		const queryParams = parseQueryString(new URL(req.url));
+		return queryParams as SubscriptionInput;
+	},
+});
+
+const manageController = manage({
+	apiKey,
+	site,
+	apiPayload: (req: Request) => {
+		const queryParams = parseQueryString(new URL(req.url));
+		return queryParams as ManageInput;
+	},
+});
 
 async function webhook(req: Request, _res: Response) {
 	// HTTP Basic Auth is currently optional when adding a new webhook
@@ -15,10 +48,7 @@ async function webhook(req: Request, _res: Response) {
 	// Please set the env variable CHARGEBEE_WEBHOOK_BASIC_AUTH to "user:pass"
 	// which is validated here
 	try {
-		validateBasicAuth(
-			process.env.CHARGEBEE_WEBHOOK_AUTH,
-			req.get("authorization"),
-		);
+		validateBasicAuth(webhookBasicAuth, req.get("authorization"));
 	} catch (error) {
 		console.error(error);
 	}
@@ -30,12 +60,12 @@ async function webhook(req: Request, _res: Response) {
 
 export function init(app: Application) {
 	// Checkout
-	app.get(`/${prefix}/checkout/charge`, charge);
-	app.get(`/${prefix}/checkout/manage`, manage);
-	app.get(`/${prefix}/checkout/subscribe`, subscribe);
+	app.get(`/${routePrefix}/checkout/charge`, chargeController);
+	app.get(`/${routePrefix}/checkout/manage`, manageController);
+	app.get(`/${routePrefix}/checkout/subscribe`, subscribeController);
 
 	// Webhook
-	app.post(`/${prefix}/webhook`, webhook);
+	app.post(`/${routePrefix}/webhook`, webhook);
 
 	return app;
 }
