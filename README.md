@@ -37,7 +37,7 @@ pnpm watch
 pnpm link:all
 ```
 
-Once the packages are built and installed, running `npm|pnpm|bun` install _should_ use the local version of the package. The `chargebee-init` CLI should now be available in the global bin directory (if configured correctly), or can be invoked via `npx chargebee-init`
+Once the packages are built and installed, running `npm|pnpm|bun` install _should_ use the local version of the package. The `chargebee-init` CLI should now be available in the global bin directory (if configured correctly), or can be invoked via `npx chargebee-init`. Run `$(npm config get prefix)/bin` and ensure that directory exists in your `PATH`. Alternatively, you can invoke the script via `node /path/to/js-framework-adapters/packages/cli/dist/cli.js`.
 
 #### Running chargebee-init
 

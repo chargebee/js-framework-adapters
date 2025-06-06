@@ -1,4 +1,4 @@
-import { type Chargebee, checkBasicAuth } from "chargebee-init-core";
+import { type Chargebee, validateBasicAuth } from "@chargebee/nextjs";
 import type { NextMiddlewareResult } from "next/dist/server/web/types.js";
 import { type NextRequest, NextResponse } from "next/server.js";
 
@@ -8,7 +8,7 @@ export async function POST(req: NextRequest): Promise<NextMiddlewareResult> {
 	// Please set the env variable CHARGEBEE_WEBHOOK_BASIC_AUTH to "user:pass"
 	// which is validated here
 	try {
-		checkBasicAuth(
+		validateBasicAuth(
 			process.env.CHARGEBEE_WEBHOOK_AUTH,
 			req.headers.get("authorization"),
 		);

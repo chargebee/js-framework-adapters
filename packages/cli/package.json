@@ -1,16 +1,20 @@
 {
   "name": "chargebee-init",
+  "type": "module",
+  "exports": "./dist/index.js",
   "bin": {
-    "chargebee-init": "bin/init"
+    "chargebee-init": "dist/cli.js"
   },
-  "main": "dist/index.js",
+  "engines": {
+    "node": ">=18"
+  },
   "files": [
-    "dist",
-    "bin"
+    "dist"
   ],
   "dependencies": {
     "ansi-colors": "^4.1.3",
     "enquirer": "^2.4.1",
+    "meow": "^13.2.0",
     "simple-git": "^3.27.0",
     "semver": "^7.7.2"
   },
@@ -21,7 +25,7 @@
   "scripts": {
     "prebuild": "rm -rf dist && mkdir -p dist/templates",
     "build": "tsc",
-    "postbuild": "for n in nextjs; do cp -R ../$n/templates dist/templates/$n/; done;",
+    "postbuild": "for n in nextjs express; do cp -R ../$n/templates dist/templates/$n/; done;",
     "watch": "pnpm build && tsc --watch"
   }
 }

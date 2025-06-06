@@ -1,9 +1,3 @@
-import qs from "qs";
-
-export function parseQueryString(url: URL): object {
-	return qs.parse(url.search, { ignoreQueryPrefix: true });
-}
-
 export function validateApiAuth(apiKey: string, site: string) {
 	if (!apiKey || !site) {
 		throw new Error(
@@ -19,9 +13,9 @@ function splitUserPass(input: string = ""): string[] {
 	return [user, pass];
 }
 
-export function checkBasicAuth(
+export function validateBasicAuth(
 	webhookUserPass: string | undefined,
-	authHeader: string | null,
+	authHeader: string | null | undefined,
 ) {
 	const [WEBHOOK_USER, WEBHOOK_PASS] = splitUserPass(webhookUserPass);
 	if (!WEBHOOK_USER || !WEBHOOK_PASS) {

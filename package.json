@@ -6,25 +6,21 @@
     "node": ">=20",
     "pnpm": ">=10"
   },
-  "packageManager": "pnpm@10.10.0",
+  "packageManager": "pnpm@10.11.1",
   "devDependencies": {
-    "@biomejs/biome": "2.0.0-beta.5",
+    "@biomejs/biome": "2.0.0-beta.6",
     "@sindresorhus/tsconfig": "^7.0.0",
     "@types/node": "22.15.2",
-    "esbuild": "^0.25.4",
     "typescript": "^5.8.3"
   },
   "scripts": {
+    "prebuild": "pnpm clean",
     "build": "pnpm -r build",
     "watch": "pnpm -r watch",
     "link:all": "for p in packages/*; do pushd $p; npm link; popd; done",
-    "clean": "rm -rf dist packages/*/dist",
+    "unlink:all": "for p in packages/*; do pushd $p; npm unlink --global --link; popd; done",
+    "clean": "rm -rf packages/*/dist packages/*/*.tsbuildinfo",
     "lint": "biome check",
     "pnpm:devPreinstall": "pre-commit install"
-  },
-  "dependencies": {
-    "@chargebee/nextjs": "link:packages/nextjs",
-    "chargebee-init": "link:packages/cli",
-    "chargebee-init-core": "link:packages/core"
   }
 }
