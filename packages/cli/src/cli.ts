@@ -1,9 +1,10 @@
+#!/usr/bin/env node
 import meow from "meow";
 
 const cli = meow(
 	`
   Usage
-    $ chargebee-init <command>
+    $ chargebee-init <install>
 
   Options
     --dir, -d Directory of your app

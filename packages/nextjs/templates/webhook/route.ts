@@ -1,4 +1,4 @@
-import { type Chargebee, validateBasicAuth } from "chargebee-init-core";
+import { type Chargebee, validateBasicAuth } from "@chargebee/nextjs";
 import type { NextMiddlewareResult } from "next/dist/server/web/types.js";
 import { type NextRequest, NextResponse } from "next/server.js";
 

@@ -1,44 +1,40 @@
-import { charge, manage, subscribe } from "@chargebee/express";
 import {
 	type Chargebee,
 	type ChargeInput,
+	charge,
 	type ManageInput,
-	parseQueryString,
+	manage,
 	type SubscriptionInput,
+	subscribe,
 	validateBasicAuth,
-} from "chargebee-init-core";
+} from "@chargebee/express";
 import type { Application, Request, Response } from "express";
 
 const apiKey = process.env.CHARGEBEE_API_KEY!;
 const site = process.env.CHARGEBEE_SITE!;
 const webhookBasicAuth = process.env.CHARGEBEE_WEBHOOK_AUTH;
 
-const routePrefix = `chargebee`;
-
 const chargeController = charge({
 	apiKey,
 	site,
-	apiPayload: (req: Request) => {
-		const queryParams = parseQueryString(new URL(req.url));
-		return queryParams as ChargeInput;
+	apiPayload: (_req: Request) => {
+		return {} as ChargeInput;
 	},
 });
 
 const subscribeController = subscribe({
 	apiKey,
 	site,
-	apiPayload: (req: Request) => {
-		const queryParams = parseQueryString(new URL(req.url));
-		return queryParams as SubscriptionInput;
+	apiPayload: (_req: Request) => {
+		return {} as SubscriptionInput;
 	},
 });
 
 const manageController = manage({
 	apiKey,
 	site,
-	apiPayload: (req: Request) => {
-		const queryParams = parseQueryString(new URL(req.url));
-		return queryParams as ManageInput;
+	apiPayload: (_req: Request) => {
+		return {} as ManageInput;
 	},
 });
 
@@ -58,7 +54,10 @@ async function webhook(req: Request, _res: Response) {
 	console.log(data);
 }
 
-export function init(app: Application) {
+export function init(
+	app: Application,
+	{ routePrefix = "/chargebee" } = {} as { routePrefix: string },
+) {
 	// Checkout
 	app.get(`/${routePrefix}/checkout/charge`, chargeController);
 	app.get(`/${routePrefix}/checkout/manage`, manageController);
@@ -71,3 +70,7 @@ export function init(app: Application) {
 }
 
 module.exports = init;
+
+// require("@chargebee/express")(app, {
+// 	routePrefix: "/chargebee",
+// });

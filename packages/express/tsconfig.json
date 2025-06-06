@@ -6,8 +6,13 @@
     "rootDir": "./src",
     "outDir": "dist",
     "paths": {
-      "@chargebee/express": ["express/src/index.js"]
+      "#core": ["../core/src/index.ts"]
     },
+    // Explicitly disabled so that tsc uses the paths defined above
+    // in the IDE. When building/running the package, node will resolve
+    // #core from package.json#imports
+    "resolvePackageJsonImports": false,
+    "resolvePackageJsonExports": true
   },
   "references": [
     { "path": "../core" }
