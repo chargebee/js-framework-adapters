@@ -1,5 +1,6 @@
 import type { PackageManifest } from "@pnpm/types";
 import colors from "ansi-colors";
+
 import {
 	type DetectedFramework,
 	detectFramework,

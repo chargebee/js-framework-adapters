@@ -1,13 +1,12 @@
 import fs from "node:fs";
 import colors from "ansi-colors";
-import Enquirer from "enquirer";
+import type Enquirer from "enquirer";
+
 import type { PreflightResponse } from "./checks.js";
 import type { DetectedFramework } from "./frameworks.js";
 
-export const enquirer = new Enquirer();
-
 // Infer the type of the prompt options as it's not exported
-type Prompt = Parameters<typeof enquirer.prompt>[0];
+type Prompt = Parameters<typeof Enquirer.prompt>[0];
 
 export const targetDirPrompt = (cwd: string): Prompt => ({
 	type: "text",

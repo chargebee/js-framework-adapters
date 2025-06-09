@@ -1,13 +1,10 @@
 import colors from "ansi-colors";
+import Enquirer from "enquirer";
+
 import { type CheckError, frameworkChecks, preflightChecks } from "./checks.js";
 import * as help from "./help.js";
 import { updateDependencies, writePackageJson } from "./package.js";
-import {
-	confirmWritePrompt,
-	enquirer,
-	gitPrompt,
-	targetDirPrompt,
-} from "./prompts.js";
+import { confirmWritePrompt, gitPrompt, targetDirPrompt } from "./prompts.js";
 import { copyTemplates } from "./templates.js";
 
 const error = (...lines: string[]): void => {
@@ -26,6 +23,7 @@ const checkErrors = ({ errors }: object & { errors: CheckError[] }) => {
 
 export const run = async (argv: string[]): Promise<void> => {
 	const cwd = argv[0] ?? process.cwd();
+	const enquirer = new Enquirer();
 
 	const { targetDir } = (await enquirer.prompt(targetDirPrompt(cwd))) as {
 		targetDir: string;
