@@ -19,7 +19,7 @@
   },
   "files": ["dist"],
   "dependencies": {
-    "chargebee": "3.8.0-beta.1",
+    "chargebee": "^3.7.0",
     "zod": "^3.25.51"
   },
   "devDependencies": {

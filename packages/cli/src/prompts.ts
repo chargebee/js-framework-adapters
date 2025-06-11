@@ -4,6 +4,7 @@ import type Enquirer from "enquirer";
 
 import type { PreflightResponse } from "./checks.js";
 import type { DetectedFramework } from "./frameworks.js";
+import * as help from "./help.js";
 
 // Infer the type of the prompt options as it's not exported
 type Prompt = Parameters<typeof Enquirer.prompt>[0];
@@ -35,7 +36,7 @@ export const confirmWritePrompt = (framework: DetectedFramework): Prompt => ({
 	name: "confirmWrite",
 	message: () =>
 		`Supported version of ${framework.name} found! Please read these details to continue: \n
-${colors.blue(framework.info.description)}
+${colors.blue(help.messages[framework.name].preinit)}
 
 The next step is to create the required files and update package.json with the dependencies.
 ${colors.green("Do you want to continue?")}`,

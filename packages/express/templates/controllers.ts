@@ -54,14 +54,14 @@ async function webhook(req: Request, _res: Response) {
 	console.log(data);
 }
 
-export function init(
+export default function init(
 	app: Application,
 	{ routePrefix = "/chargebee" } = {} as { routePrefix: string },
 ) {
 	// Checkout
-	app.get(`/${routePrefix}/checkout/charge`, chargeController);
-	app.get(`/${routePrefix}/checkout/manage`, manageController);
-	app.get(`/${routePrefix}/checkout/subscribe`, subscribeController);
+	app.get(`${routePrefix}/checkout/charge`, chargeController);
+	app.get(`${routePrefix}/checkout/manage`, manageController);
+	app.get(`${routePrefix}/checkout/subscribe`, subscribeController);
 
 	// Webhook
 	app.post(`/${routePrefix}/webhook`, webhook);
@@ -69,8 +69,6 @@ export function init(
 	return app;
 }
 
-module.exports = init;
-
-// require("@chargebee/express")(app, {
-// 	routePrefix: "/chargebee",
-// });
+// Usage:
+// import chargebeeInit from "./chargebee/controllers.ts"
+// chargebeeInit(app);
