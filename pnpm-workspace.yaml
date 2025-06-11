@@ -6,6 +6,5 @@ onlyBuiltDependencies:
   - esbuild
 overrides:
   chargebee-init: link:packages/cli
-  chargebee-init-core: link:packages/core
   '@chargebee/express': link:packages/express
   '@chargebee/nextjs': link:packages/nextjs
