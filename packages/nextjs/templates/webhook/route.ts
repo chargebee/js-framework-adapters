@@ -1,8 +1,7 @@
 import { type Chargebee, validateBasicAuth } from "@chargebee/nextjs";
-import type { NextMiddlewareResult } from "next/dist/server/web/types.js";
 import { type NextRequest, NextResponse } from "next/server.js";
 
-export async function POST(req: NextRequest): Promise<NextMiddlewareResult> {
+export async function POST(req: NextRequest) {
 	// HTTP Basic Auth is currently optional when adding a new webhook
 	// url in the Chargebee dashboard. However, we expect it's set by default.
 	// Please set the env variable CHARGEBEE_WEBHOOK_BASIC_AUTH to "user:pass"

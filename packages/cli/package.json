@@ -1,15 +1,18 @@
 {
   "name": "chargebee-init",
+  "version": "0.1.0",
+  "description": "A CLI to help integrate Chargebee services with your existing app",
   "type": "module",
-  "exports": "./dist/index.js",
+  "exports": "./dist/cli.js",
   "bin": {
-    "chargebee-init": "dist/cli.js"
+    "chargebee-init": "bin/chargebee-init"
   },
   "engines": {
     "node": ">=18"
   },
   "files": [
-    "dist"
+    "dist",
+    "bin"
   ],
   "dependencies": {
     "ansi-colors": "^4.1.3",

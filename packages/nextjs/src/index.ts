@@ -1,9 +1,4 @@
-import type { NextMiddlewareResult } from "next/dist/server/web/types.js";
-import {
-	type NextMiddleware,
-	type NextRequest,
-	NextResponse,
-} from "next/server.js";
+import { type NextRequest, NextResponse } from "next/server.js";
 import {
 	type ChargeRequest,
 	checkout,
@@ -13,12 +8,8 @@ import {
 
 export * from "#core";
 
-export const charge = ({
-	apiKey,
-	site,
-	apiPayload,
-}: ChargeRequest): NextMiddleware => {
-	return async (req: NextRequest): Promise<NextMiddlewareResult> => {
+export const charge = ({ apiKey, site, apiPayload }: ChargeRequest) => {
+	return async (req: NextRequest) => {
 		try {
 			const payload = await apiPayload(req);
 			const { hosted_page } = await checkout.charge({ apiKey, site, payload });
@@ -38,8 +29,8 @@ export const subscribe = ({
 	apiKey,
 	site,
 	apiPayload,
-}: SubscriptionRequest): NextMiddleware => {
-	return async (req: NextRequest): Promise<NextMiddlewareResult> => {
+}: SubscriptionRequest) => {
+	return async (req: NextRequest) => {
 		try {
 			const payload = await apiPayload(req);
 			const { hosted_page } = await checkout.subscribe({
@@ -59,12 +50,8 @@ export const subscribe = ({
 	};
 };
 
-export const manage = ({
-	apiKey,
-	site,
-	apiPayload,
-}: ManageRequest): NextMiddleware => {
-	return async (req: NextRequest): Promise<NextMiddlewareResult> => {
+export const manage = ({ apiKey, site, apiPayload }: ManageRequest) => {
+	return async (req: NextRequest) => {
 		try {
 			const payload = await apiPayload(req);
 			const { hosted_page } = await checkout.managePayment({

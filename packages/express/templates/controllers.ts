@@ -2,6 +2,7 @@ import {
 	type Chargebee,
 	type ChargeInput,
 	charge,
+	client,
 	type ManageInput,
 	manage,
 	type SubscriptionInput,
@@ -38,7 +39,18 @@ const manageController = manage({
 	},
 });
 
-async function webhook(req: Request, _res: Response) {
+async function callbackController(req: Request, _res: Response) {
+	const { searchParams } = new URL(req.originalUrl);
+	const id = searchParams.get("id");
+	const state = searchParams.get("state");
+	// TODO: validate state and do something with the hosted page id
+	const chargebee = await client.getFromEnv();
+	if (state === "succeeded") {
+		const { hosted_page } = await chargebee.hostedPage.retrieve(id!);
+	}
+}
+
+async function webhookController(req: Request, _res: Response) {
 	// HTTP Basic Auth is currently optional when adding a new webhook
 	// url in the Chargebee dashboard. However, we expect it's set by default.
 	// Please set the env variable CHARGEBEE_WEBHOOK_BASIC_AUTH to "user:pass"
@@ -54,23 +66,22 @@ async function webhook(req: Request, _res: Response) {
 	console.log(data);
 }
 
-export function init(
+export default function init(
 	app: Application,
 	{ routePrefix = "/chargebee" } = {} as { routePrefix: string },
 ) {
 	// Checkout
-	app.get(`/${routePrefix}/checkout/charge`, chargeController);
-	app.get(`/${routePrefix}/checkout/manage`, manageController);
-	app.get(`/${routePrefix}/checkout/subscribe`, subscribeController);
+	app.get(`${routePrefix}/checkout/charge`, chargeController);
+	app.get(`${routePrefix}/checkout/manage`, manageController);
+	app.get(`${routePrefix}/checkout/subscribe`, subscribeController);
+	app.get(`${routePrefix}/checkout/callback`, callbackController);
 
 	// Webhook
-	app.post(`/${routePrefix}/webhook`, webhook);
+	app.post(`/${routePrefix}/webhook`, webhookController);
 
 	return app;
 }
 
-module.exports = init;
-
-// require("@chargebee/express")(app, {
-// 	routePrefix: "/chargebee",
-// });
+// Usage:
+// import chargebeeInit from "./chargebee/controllers.ts"
+// chargebeeInit(app);

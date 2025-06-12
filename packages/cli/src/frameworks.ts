@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { PackageManifest } from "@pnpm/types";
 import semver from "semver";
 
@@ -6,27 +7,24 @@ export type Framework = "nextjs" | "express";
 export type Features = "checkout" | "webhook";
 
 export interface FrameworkInfo {
-	packageName: string; // NPM package name
-	minVersion: string; // Minimum supported semver
-	description: string; // Additional text to display to the user
-	dependencies: string[]; // List of dependencies to add to package.json
-	postInstallSteps: () => void;
-}
+		packageName: string; // NPM package name
+		minVersion: string; // Minimum supported semver
+		dependencies: string[]; // List of dependencies to add to package.json
+		appDirectories: string[]; // Expected structure of app directories
+	}
 
 export const supportedFrameworks: Record<Framework, FrameworkInfo> = {
 	nextjs: {
 		packageName: "next",
 		minVersion: "15",
-		description: `Only App Router is supported at the moment`,
-		dependencies: ["@chargebee/nextjs:~0.1.0", "chargebee-init-core:~0.1.0"],
-		postInstallSteps: () => ``,
+		dependencies: ["@chargebee/nextjs:~0.1.0"],
+		appDirectories: ["app", path.join("src", "app")],
 	},
 	express: {
 		packageName: "express",
-		minVersion: "4",
-		description: "",
-		dependencies: ["@chargebee/express:~0.1.0", "chargebee-init-core:~0.1.0"],
-		postInstallSteps: () => ``,
+		minVersion: ">=5",
+		dependencies: ["@chargebee/express:~0.1.0"],
+		appDirectories: ["app", "src"],
 	},
 } as const;
 

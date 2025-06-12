@@ -51,14 +51,14 @@ cd nextjs-app
 npx chargebee-init
 
 # Install the required packages that was linked previously using "pnpm link:all"
-npm link @chargebee/nextjs chargebee-init-core
+npm link @chargebee/nextjs --save
 ```
 
 The last step is to pass the required secrets to the API client. Depending on your app and framework, this can be as simple as adding them to the `.env` file, or by passing the secrets to replace the `process.env.*` variables at build time.
 
 ```
-CHARGEBEE_API_KEY=
 CHARGEBEE_SITE=
+CHARGEBEE_API_KEY=
 CHARGEBEE_WEBHOOK_AUTH="username:password"
 ```
 
@@ -71,7 +71,6 @@ To verify if the packages are linked as expected, run `npm ls -g --link` which s
 ```
 /opt/homebrew/lib
 ├── @chargebee/nextjs@0.1.0 -> ./../../../Users/srinath/projects/js-framework-adapters/packages/nextjs
-├── chargebee-init-core@ -> ./../../../Users/srinath/projects/js-framework-adapters/packages/core
 └── chargebee-init@ -> ./../../../Users/srinath/projects/js-framework-adapters/packages/cli
 ```
 
@@ -92,25 +91,32 @@ chargebee/js-framework-adapters/
 │   │       └── templates
 │   │           ├── nextjs (copied from nextjs/templates)
 │   │           └── express (copied from express/templates)
-│   ├── core (chargebee-init-core)
+│   ├── core (private, packaged as part of build)
 │   │   ├── dist
 │   │   └── package.json
-│   │       ├── dependencies
+│   │       ├── devDependencies
 │   │       |   ├── chargebee
-│   │       │   ├── qs
 │   │       │   └── zod
 │   ├── nextjs (@chargebee/nextjs)
 │   │   ├── dist
+|   |   |   ├── *.js
+|   |   |   ├── *.d.ts
+|   |   |   ├── core/*.js (copied from packages/core/dist)
 │   │   └── package.json
 │   │       ├── dependencies
-│   │       │   └── chargebee-init-core
+│   │       |   ├── chargebee
+│   │       │   └── zod
 │   │       └── peerDependencies
 │   │           └── next
 │   └── express (@chargebee/express)
 │       ├── dist
+|       |   ├── *.js
+|       |   ├── *.d.ts
+|       |   ├── core/*.js (copied from packages/core/dist)
 │       └── package.json
 │           ├── dependencies
-│           │   └── chargebee-init-core
+│           |   ├── chargebee
+│           │   └── zod
 │           └── peerDependencies
 │               └── express
 ├── package.json
@@ -120,7 +126,7 @@ chargebee/js-framework-adapters/
 
 * The templates exist within the target framework directory to provide type checking and IDE autocompletion during development. However, they are excluded from the published package as they are required only as a part of the cli to be copied into the target app directory. For example, the `nextjs/charge/page.ts` depends on Next.js and other custom types, which are direct requirements for `@chargebee/nextjs`, but not for the CLI.
 
-* Framework specific packages (e.g. `@chargebee/nextjs`) will have the only framework (`next`) defined as a peerDependency. All other runtime dependencies (e.g `chargebee`, `chargebee-init-core`) are defined as direct dependencies
+* Framework specific packages (e.g. `@chargebee/nextjs`) will have the only framework (`next`) defined as a peerDependency. All other runtime dependencies (e.g `chargebee`, `zod`) are defined as direct dependencies
 
 
 #### Dependency tree
@@ -132,12 +138,6 @@ nextjs-app
 └── dependencies
     ├── next
     └── @chargebee/nextjs
-        ├── dependencies
-        │   └── chargebee-init-core
-        │       └── dependencies
-        │           ├── chargebee-node
-        │           ├── qs
-        │           └── zod
         └── peerDependencies
             └── next
 ```

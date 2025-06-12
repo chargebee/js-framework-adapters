@@ -1,0 +1,12 @@
+#!/usr/bin/env node
+
+import { run } from "../dist/cli.js";
+
+function onError(err) {
+	console.error(err);
+	process.exit(1);
+}
+
+process.on("uncaughtException", onError);
+
+run().catch(onError);

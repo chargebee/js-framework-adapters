@@ -1,13 +1,11 @@
 import colors from "ansi-colors";
+import Enquirer from "enquirer";
+
 import { type CheckError, frameworkChecks, preflightChecks } from "./checks.js";
+import { type Framework, supportedFrameworks } from "./frameworks.js";
 import * as help from "./help.js";
 import { updateDependencies, writePackageJson } from "./package.js";
-import {
-	confirmWritePrompt,
-	enquirer,
-	gitPrompt,
-	targetDirPrompt,
-} from "./prompts.js";
+import { confirmWritePrompt, gitPrompt, targetDirPrompt } from "./prompts.js";
 import { copyTemplates } from "./templates.js";
 
 const error = (...lines: string[]): void => {
@@ -24,8 +22,9 @@ const checkErrors = ({ errors }: object & { errors: CheckError[] }) => {
 	}
 };
 
-export const run = async (argv: string[]): Promise<void> => {
-	const cwd = argv[0] ?? process.cwd();
+export const init = async (): Promise<void> => {
+	const cwd = process.cwd();
+	const enquirer = new Enquirer();
 
 	const { targetDir } = (await enquirer.prompt(targetDirPrompt(cwd))) as {
 		targetDir: string;
@@ -69,9 +68,12 @@ export const run = async (argv: string[]): Promise<void> => {
 	}
 	// Copy templates
 	try {
-		const updatedFiles = copyTemplates(targetDir, detectedFramework.name, [
-			"checkout",
-		]);
+		const frameworkName = detectedFramework.name as Framework;
+		const updatedFiles = copyTemplates(
+			targetDir,
+			frameworkName,
+			supportedFrameworks[frameworkName],
+		);
 		const updatedPkg = updateDependencies(pkg, detectedFramework);
 		writePackageJson(targetDir, updatedPkg);
 		updatedFiles.push(`package.json`);
@@ -81,7 +83,7 @@ export const run = async (argv: string[]): Promise<void> => {
 				`\nThe following files were created or updated: \n${updatedFiles.join("\n")}\n`,
 			),
 		);
-		console.log(colors.yellow(help.postInstallMsg));
+		console.log(colors.yellow(help.messages[frameworkName].postinit));
 	} catch (err: unknown) {
 		error("Could not copy files to the app directory", err as string);
 	}
