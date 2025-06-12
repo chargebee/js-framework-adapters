@@ -36,7 +36,7 @@ export const confirmWritePrompt = (framework: DetectedFramework): Prompt => ({
 	name: "confirmWrite",
 	message: () =>
 		`Supported version of ${framework.name} found! Please read these details to continue: \n
-${colors.blue(help.messages[framework.name].preinit)}
+${colors.cyanBright(help.messages[framework.name].preinit)}
 
 The next step is to create the required files and update package.json with the dependencies.
 ${colors.green("Do you want to continue?")}`,

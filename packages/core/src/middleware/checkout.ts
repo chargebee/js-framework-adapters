@@ -1,6 +1,7 @@
-import * as Chargebee from "chargebee";
+import type * as Chargebee from "chargebee";
+
+import * as client from "../client.js";
 import type { ApiAuth } from "../types.js";
-import { validateApiAuth } from "../utils.js";
 
 export async function charge({
 	apiKey,
@@ -11,9 +12,7 @@ export async function charge({
 }): Promise<
 	Chargebee.ChargebeeResponse<Chargebee.HostedPage.CheckoutOneTimeForItemsResponse>
 > {
-	validateApiAuth(apiKey, site);
-
-	const chargebee = new Chargebee.default({ apiKey, site });
+	const chargebee = await client.get({ apiKey, site });
 	const response = await chargebee.hostedPage.checkoutOneTimeForItems(payload);
 	return response;
 }
@@ -27,9 +26,7 @@ export async function subscribe({
 }): Promise<
 	Chargebee.ChargebeeResponse<Chargebee.HostedPage.CheckoutNewForItemsResponse>
 > {
-	validateApiAuth(apiKey, site);
-
-	const chargebee = new Chargebee.default({ apiKey, site });
+	const chargebee = await client.get({ apiKey, site });
 	const response = await chargebee.hostedPage.checkoutNewForItems(payload);
 	return response;
 }
@@ -43,9 +40,7 @@ export async function managePayment({
 }): Promise<
 	Chargebee.ChargebeeResponse<Chargebee.HostedPage.ManagePaymentSourcesResponse>
 > {
-	validateApiAuth(apiKey, site);
-
-	const chargebee = new Chargebee.default({ apiKey, site });
+	const chargebee = await client.get({ apiKey, site });
 	const response = await chargebee.hostedPage.managePaymentSources(payload);
 	return response;
 }

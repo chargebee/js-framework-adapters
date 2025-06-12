@@ -51,7 +51,7 @@ cd nextjs-app
 npx chargebee-init
 
 # Install the required packages that was linked previously using "pnpm link:all"
-npm link @chargebee/nextjs
+npm link @chargebee/nextjs --save
 ```
 
 The last step is to pass the required secrets to the API client. Depending on your app and framework, this can be as simple as adding them to the `.env` file, or by passing the secrets to replace the `process.env.*` variables at build time.
