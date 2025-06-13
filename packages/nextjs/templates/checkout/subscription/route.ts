@@ -1,7 +1,10 @@
-import { type SubscriptionInput, subscribe } from "@chargebee/nextjs";
+import {
+	createSubscriptionCheckout,
+	type SubscriptionInput,
+} from "@chargebee/nextjs";
 import type { NextRequest } from "next/server.js";
 
-export const GET = subscribe({
+export const GET = createSubscriptionCheckout({
 	apiKey: process.env.CHARGEBEE_API_KEY!,
 	site: process.env.CHARGEBEE_SITE!,
 	apiPayload: (req: NextRequest): SubscriptionInput => {

@@ -1,6 +1,7 @@
 import type {
 	ChargeInput,
 	ManageInput,
+	PortalCreateInput,
 	SubscriptionInput,
 } from "./validators/index.js";
 
@@ -20,3 +21,4 @@ export interface Request<T> extends ApiAuth {
 export type ChargeRequest = Request<ChargeInput>;
 export type SubscriptionRequest = Request<SubscriptionInput>;
 export type ManageRequest = Request<ManageInput>;
+export type PortalCreateRequest = Request<PortalCreateInput>;

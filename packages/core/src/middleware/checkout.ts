@@ -3,7 +3,7 @@ import type * as Chargebee from "chargebee";
 import * as client from "../client.js";
 import type { ApiAuth } from "../types.js";
 
-export async function charge({
+export async function oneTime({
 	apiKey,
 	site,
 	payload,
@@ -17,7 +17,7 @@ export async function charge({
 	return response;
 }
 
-export async function subscribe({
+export async function subscription({
 	apiKey,
 	site,
 	payload,
@@ -31,7 +31,7 @@ export async function subscribe({
 	return response;
 }
 
-export async function managePayment({
+export async function manage({
 	apiKey,
 	site,
 	payload,

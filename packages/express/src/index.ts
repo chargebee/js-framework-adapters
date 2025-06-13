@@ -3,12 +3,14 @@ import {
 	type ChargeRequest,
 	checkout,
 	type ManageRequest,
+	type PortalCreateRequest,
+	portal,
 	type SubscriptionRequest,
 } from "#core";
 
 export * from "#core";
 
-export const charge = ({
+export const createOneTimeCheckout = ({
 	apiKey,
 	site,
 	apiPayload,
@@ -16,7 +18,7 @@ export const charge = ({
 	return async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const payload = await apiPayload(req);
-			const { hosted_page } = await checkout.charge({ apiKey, site, payload });
+			const { hosted_page } = await checkout.oneTime({ apiKey, site, payload });
 			if (hosted_page.url) {
 				return res.redirect(hosted_page.url);
 			} else {
@@ -29,7 +31,7 @@ export const charge = ({
 	};
 };
 
-export const subscribe = ({
+export const createSubscriptionCheckout = ({
 	apiKey,
 	site,
 	apiPayload,
@@ -37,7 +39,7 @@ export const subscribe = ({
 	return async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const payload = await apiPayload(req);
-			const { hosted_page } = await checkout.subscribe({
+			const { hosted_page } = await checkout.subscription({
 				apiKey,
 				site,
 				payload,
@@ -54,7 +56,7 @@ export const subscribe = ({
 	};
 };
 
-export const manage = ({
+export const managePaymentSources = ({
 	apiKey,
 	site,
 	apiPayload,
@@ -62,7 +64,7 @@ export const manage = ({
 	return async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const payload = await apiPayload(req);
-			const { hosted_page } = await checkout.managePayment({
+			const { hosted_page } = await checkout.manage({
 				apiKey,
 				site,
 				payload,
@@ -71,6 +73,31 @@ export const manage = ({
 				return res.redirect(hosted_page.url);
 			} else {
 				throw new Error(`Could not generate URL for checkout`);
+			}
+		} catch (err) {
+			console.error(err);
+			next(err);
+		}
+	};
+};
+
+export const createPortalSession = ({
+	apiKey,
+	site,
+	apiPayload,
+}: PortalCreateRequest) => {
+	return async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const payload = await apiPayload(req);
+			const { portal_session } = await portal.create({
+				apiKey,
+				site,
+				payload,
+			});
+			if (portal_session.access_url) {
+				return res.redirect(portal_session.access_url);
+			} else {
+				throw new Error(`Could not generate URL for portal session`);
 			}
 		} catch (err) {
 			console.error(err);
