@@ -1,12 +1,14 @@
 import {
 	type Chargebee,
 	type ChargeInput,
-	charge,
 	client,
+	createOneTimeCheckout,
+	createPortalSession,
+	createSubscriptionCheckout,
 	type ManageInput,
-	manage,
+	managePaymentSources,
+	type PortalCreateInput,
 	type SubscriptionInput,
-	subscribe,
 	validateBasicAuth,
 } from "@chargebee/express";
 import type { Application, Request, Response } from "express";
@@ -15,7 +17,7 @@ const apiKey = process.env.CHARGEBEE_API_KEY!;
 const site = process.env.CHARGEBEE_SITE!;
 const webhookBasicAuth = process.env.CHARGEBEE_WEBHOOK_AUTH;
 
-const chargeController = charge({
+const chargeController = createOneTimeCheckout({
 	apiKey,
 	site,
 	apiPayload: (_req: Request) => {
@@ -23,7 +25,7 @@ const chargeController = charge({
 	},
 });
 
-const subscribeController = subscribe({
+const subscribeController = createSubscriptionCheckout({
 	apiKey,
 	site,
 	apiPayload: (_req: Request) => {
@@ -31,11 +33,19 @@ const subscribeController = subscribe({
 	},
 });
 
-const manageController = manage({
+const manageController = managePaymentSources({
 	apiKey,
 	site,
 	apiPayload: (_req: Request) => {
 		return {} as ManageInput;
+	},
+});
+
+const portalController = createPortalSession({
+	apiKey,
+	site,
+	apiPayload: (_req: Request) => {
+		return {} as PortalCreateInput;
 	},
 });
 
@@ -71,10 +81,13 @@ export default function init(
 	{ routePrefix = "/chargebee" } = {} as { routePrefix: string },
 ) {
 	// Checkout
-	app.get(`${routePrefix}/checkout/charge`, chargeController);
-	app.get(`${routePrefix}/checkout/manage`, manageController);
-	app.get(`${routePrefix}/checkout/subscribe`, subscribeController);
+	app.get(`${routePrefix}/checkout/one-time-charge`, chargeController);
+	app.get(`${routePrefix}/checkout/subscription`, subscribeController);
+	app.get(`${routePrefix}/checkout/manage-payment-sources`, manageController);
 	app.get(`${routePrefix}/checkout/callback`, callbackController);
+
+	// Portal
+	app.get(`${routePrefix}/portal`, portalController);
 
 	// Webhook
 	app.post(`/${routePrefix}/webhook`, webhookController);

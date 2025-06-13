@@ -8,3 +8,4 @@ export type ChargeInput =
 export type SubscriptionInput =
 	Chargebee.HostedPage.CheckoutNewForItemsInputParam;
 export type ManageInput = Chargebee.HostedPage.ManagePaymentSourcesInputParam;
+export type PortalCreateInput = Chargebee.PortalSession.CreateInputParam;

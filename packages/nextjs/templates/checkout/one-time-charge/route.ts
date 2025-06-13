@@ -1,7 +1,7 @@
-import { type ChargeInput, charge } from "@chargebee/nextjs";
+import { type ChargeInput, createOneTimeCheckout } from "@chargebee/nextjs";
 import type { NextRequest } from "next/server.js";
 
-export const GET = charge({
+export const GET = createOneTimeCheckout({
 	apiKey: process.env.CHARGEBEE_API_KEY!,
 	site: process.env.CHARGEBEE_SITE!,
 	apiPayload: (req: NextRequest): ChargeInput => {

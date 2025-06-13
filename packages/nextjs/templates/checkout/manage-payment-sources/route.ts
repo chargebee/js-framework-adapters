@@ -1,7 +1,7 @@
-import { type ManageInput, manage } from "@chargebee/nextjs";
+import { type ManageInput, managePaymentSources } from "@chargebee/nextjs";
 import type { NextRequest } from "next/server.js";
 
-export const GET = manage({
+export const GET = managePaymentSources({
 	apiKey: process.env.CHARGEBEE_API_KEY!,
 	site: process.env.CHARGEBEE_SITE!,
 	apiPayload: (req: NextRequest): ManageInput => {
