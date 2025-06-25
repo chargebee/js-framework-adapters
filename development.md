@@ -18,6 +18,7 @@ npm i -g pnpm
 pnpm setup
 git clone https://github.com/chargebee/js-framework-adapters
 pnpm i
+pre-commit install
 ```
 
 ### Running locally
