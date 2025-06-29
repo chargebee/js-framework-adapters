@@ -156,7 +156,6 @@ async function webhookController(req: Request, _res: Response) {
 	console.log(data);
 }
 
-
 /**
  * Initialize the Express app with the Chargebee controllers
  * @param app Express application
