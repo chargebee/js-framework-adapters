@@ -5,7 +5,12 @@ import { type CheckError, frameworkChecks, preflightChecks } from "./checks.js";
 import { type Framework, supportedFrameworks } from "./frameworks.js";
 import * as help from "./help.js";
 import { updateDependencies, writePackageJson } from "./package.js";
-import { confirmWritePrompt, gitPrompt, targetDirPrompt } from "./prompts.js";
+import {
+	confirmWritePrompt,
+	gitPrompt,
+	pathPrefixPrompt,
+	targetDirPrompt,
+} from "./prompts.js";
 import { copyTemplates } from "./templates.js";
 
 const error = (...lines: string[]): void => {
@@ -54,6 +59,10 @@ export const init = async (): Promise<void> => {
 		throw new Error(`Could not determine framework in package`);
 	}
 
+	const { pathPrefix } = (await enquirer.prompt(pathPrefixPrompt())) as {
+		pathPrefix: string;
+	};
+
 	// biome-ignore lint/style/noNonNullAssertion: framework will always be available here
 	const detectedFramework = frameworkResponse.framework!;
 	const { confirmWrite } = (await enquirer.prompt(
@@ -69,11 +78,12 @@ export const init = async (): Promise<void> => {
 	// Copy templates
 	try {
 		const frameworkName = detectedFramework.name as Framework;
-		const updatedFiles = copyTemplates(
+		const updatedFiles = copyTemplates({
 			targetDir,
-			frameworkName,
-			supportedFrameworks[frameworkName],
-		);
+			framework: frameworkName,
+			frameworkInfo: supportedFrameworks[frameworkName],
+			pathPrefix,
+		});
 		const updatedPkg = updateDependencies(pkg, detectedFramework);
 		writePackageJson(targetDir, updatedPkg);
 		updatedFiles.push(`package.json`);
