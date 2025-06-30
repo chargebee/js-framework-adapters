@@ -10,7 +10,7 @@ import {
 
 export * from "#core";
 
-const userAgentSuffix = "Next.js";
+const userAgentSuffix = "Next v0.1.0";
 
 export const createOneTimeCheckout = ({
 	apiKey,
