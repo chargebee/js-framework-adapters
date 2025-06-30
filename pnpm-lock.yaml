@@ -54,8 +54,8 @@ importers:
   packages/core:
     devDependencies:
       chargebee:
-        specifier: ^3.7.0
-        version: 3.7.0
+        specifier: ^3.9.0
+        version: 3.9.0
       zod:
         specifier: ^3.25.20
         version: 3.25.20
@@ -63,8 +63,8 @@ importers:
   packages/express:
     dependencies:
       chargebee:
-        specifier: ^3.7.0
-        version: 3.7.0
+        specifier: ^3.9.0
+        version: 3.9.0
       zod:
         specifier: ^3.25.51
         version: 3.25.51
@@ -79,8 +79,8 @@ importers:
   packages/nextjs:
     dependencies:
       chargebee:
-        specifier: ^3.7.0
-        version: 3.7.0
+        specifier: ^3.9.0
+        version: 3.9.0
       zod:
         specifier: ^3.25.51
         version: 3.25.51
@@ -399,8 +399,8 @@ packages:
   caniuse-lite@1.0.30001716:
     resolution: {integrity: sha512-49/c1+x3Kwz7ZIWt+4DvK3aMJy9oYXXG6/97JKsnjdCk/6n9vVyWL8NAwVt95Lwt9eigI10Hl782kDfZUUlRXw==}
 
-  chargebee@3.7.0:
-    resolution: {integrity: sha512-NRHUUfMfv0TMz7Z75R2tnMIE4IyO6irpRoKIrGAtqRRHpeHK19rTLnOovqHea5TndbGOiJNrqYOknO6Qrsah6g==}
+  chargebee@3.9.0:
+    resolution: {integrity: sha512-lQIMsdVq1dGGtKqxWQ1jIwfHDTacVSlbjULM8JdyuNXalp0JI28BKWhP6Z7Kx3yAp8GMxtwmZwYqX0fgb6Q1mA==}
     engines: {node: '>=18.*'}
 
   client-only@0.0.1:
@@ -1027,7 +1027,7 @@ snapshots:
 
   caniuse-lite@1.0.30001716: {}
 
-  chargebee@3.7.0: {}
+  chargebee@3.9.0: {}
 
   client-only@0.0.1: {}
 

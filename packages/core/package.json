@@ -4,7 +4,7 @@
   "type": "module",
   "exports": "./src/index.ts",
   "devDependencies": {
-    "chargebee": "^3.7.0",
+    "chargebee": "^3.9.0",
     "zod": "^3.25.20"
   }
 }
