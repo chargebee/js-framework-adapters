@@ -12,7 +12,7 @@ export const GET = managePaymentSources({
 		return {
 			customer: {
 				id: "chargebee-customer-id",
-				redirect_url: `${req.nextUrl.origin}/{{pathPrefix}}/checkout/callback`,
+				redirect_url: `${req.nextUrl.origin}{{pathPrefix}}/checkout/callback`,
 				pass_thru_content: crypto.randomUUID(),
 			},
 		} as ManageInput;

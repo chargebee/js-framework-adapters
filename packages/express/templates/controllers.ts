@@ -1,7 +1,7 @@
 import {
 	type Chargebee,
+	ChargebeeClient,
 	type ChargeInput,
-	client,
 	createOneTimeCheckout,
 	createPortalSession,
 	createSubscriptionCheckout,
@@ -17,6 +17,8 @@ const apiKey = process.env.CHARGEBEE_API_KEY!;
 const site = process.env.CHARGEBEE_SITE!;
 const webhookBasicAuth = process.env.CHARGEBEE_WEBHOOK_AUTH;
 
+const chargebee = new ChargebeeClient({ apiKey, site });
+
 /**
  * Checkout an item without creating a subscription
  */
@@ -27,7 +29,6 @@ const chargeController = createOneTimeCheckout({
 		console.warn(
 			`⚠ This is the default implementation from chargebee-init and must be reviewed!`,
 		);
-		const chargebee = await client.getFromEnv();
 		// https://api-explorer.chargebee.com/item_prices/list_item_prices
 		const { list } = await chargebee.itemPrice.list({
 			item_type: {
@@ -42,7 +43,7 @@ const chargeController = createOneTimeCheckout({
 			item_prices: list.map((entry) => ({
 				item_price_id: entry.item_price.id,
 			})),
-			redirect_url: `${req.baseUrl}/{{pathPrefix}}/checkout/callback`,
+			redirect_url: `${req.baseUrl}{{pathPrefix}}/checkout/callback`,
 		} as ChargeInput;
 	},
 });
@@ -57,7 +58,6 @@ const subscriptionController = createSubscriptionCheckout({
 		console.warn(
 			`⚠ This is the default implementation from chargebee-init and must be reviewed!`,
 		);
-		const chargebee = await client.getFromEnv();
 		// https://api-explorer.chargebee.com/item_prices/list_item_prices
 		const { list } = await chargebee.itemPrice.list({
 			limit: 1,
@@ -71,7 +71,7 @@ const subscriptionController = createSubscriptionCheckout({
 
 		return {
 			subscription_items: [{ item_price_id: list[0]?.item_price.id }],
-			redirect_url: `${req.baseUrl}/{{pathPrefix}}/checkout/callback`,
+			redirect_url: `${req.baseUrl}{{pathPrefix}}/checkout/callback`,
 		} as SubscriptionInput;
 	},
 });
@@ -90,7 +90,7 @@ const manageController = managePaymentSources({
 		return {
 			customer: {
 				id: "chargebee-customer-id",
-				redirect_url: `${req.baseUrl}/{{pathPrefix}}/checkout/callback`,
+				redirect_url: `${req.baseUrl}{{pathPrefix}}/checkout/callback`,
 				pass_thru_content: crypto.randomUUID(),
 			},
 		} as ManageInput;
@@ -128,7 +128,6 @@ async function callbackController(req: Request, _res: Response) {
 	const id = searchParams.get("id");
 	const state = searchParams.get("state");
 	// TODO: validate state and do something with the hosted page id
-	const chargebee = await client.getFromEnv();
 	if (state === "succeeded") {
 		const { hosted_page } = await chargebee.hostedPage.retrieve(id!);
 	}
@@ -175,7 +174,7 @@ export default function init(
 	app.get(`${routePrefix}/portal`, portalController);
 
 	// Webhook
-	app.post(`/${routePrefix}/webhook`, webhookController);
+	app.post(`${routePrefix}/webhook`, webhookController);
 
 	return app;
 }

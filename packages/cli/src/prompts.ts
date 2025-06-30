@@ -65,8 +65,8 @@ export const pathPrefixPrompt = (): Prompt => ({
 	name: "pathPrefix",
 	message:
 		"The base path prefix for all the routes created. You can edit the generated files to change this later",
-	initial: "/",
+	initial: "",
 	result(value) {
-		return value.replace(/^\/*|\/*$/g, "");
+		return value.trim() ? `/${value.trim().replace(/^\/*|\/*$/g, "")}` : "";
 	},
 });

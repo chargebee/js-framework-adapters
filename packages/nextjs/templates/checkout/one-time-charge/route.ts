@@ -27,7 +27,7 @@ export const GET = createOneTimeCheckout({
 			item_prices: list.map((entry) => ({
 				item_price_id: entry.item_price.id,
 			})),
-			redirect_url: `${req.nextUrl.origin}/{{pathPrefix}}/checkout/callback`,
+			redirect_url: `${req.nextUrl.origin}{{pathPrefix}}/checkout/callback`,
 		} as ChargeInput;
 	},
 });

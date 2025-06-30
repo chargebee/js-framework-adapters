@@ -26,7 +26,7 @@ export const GET = createSubscriptionCheckout({
 
 		return {
 			subscription_items: [{ item_price_id: list[0]?.item_price.id }],
-			redirect_url: `${req.nextUrl.origin}/{{pathPrefix}}/checkout/callback`,
+			redirect_url: `${req.nextUrl.origin}{{pathPrefix}}/checkout/callback`,
 		} as SubscriptionInput;
 	},
 });
