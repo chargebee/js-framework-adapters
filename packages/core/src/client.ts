@@ -1,10 +1,14 @@
 import Chargebee from "chargebee";
-import type { ApiAuth } from "./types.js";
+import type { ClientConfig } from "./types.js";
 import { validateApiAuth } from "./utils.js";
 
-export async function get({ apiKey, site }: ApiAuth): Promise<Chargebee> {
+export async function get({
+	apiKey,
+	site,
+	userAgentSuffix,
+}: ClientConfig): Promise<Chargebee> {
 	validateApiAuth(apiKey, site);
-	return new Chargebee({ apiKey, site });
+	return new Chargebee({ apiKey, site, userAgentSuffix });
 }
 
 export async function getFromEnv(): Promise<Chargebee> {

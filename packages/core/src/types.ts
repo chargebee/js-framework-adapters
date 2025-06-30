@@ -9,12 +9,13 @@ export type ApiPayload<T> =
 	// biome-ignore lint: allow any arguments
 	((...args: any[]) => T) | ((...args: any[]) => Promise<T>);
 
-export interface ApiAuth {
+export interface ClientConfig {
 	apiKey: string;
 	site: string;
+	userAgentSuffix?: string;
 }
 
-export interface Request<T> extends ApiAuth {
+export interface Request<T> extends ClientConfig {
 	apiPayload: ApiPayload<T>;
 }
 
