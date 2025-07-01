@@ -1,6 +1,10 @@
 {
   "name": "chargebee-init",
-  "version": "0.1.0",
+  "version": "1.0.0-beta.1",
+  "author": {
+    "name": "Chargebee",
+    "email": "dx@chargebee.com"
+  },
   "description": "A CLI to help integrate Chargebee services with your existing app",
   "type": "module",
   "exports": "./dist/cli.js",

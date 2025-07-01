@@ -4,11 +4,11 @@
 
 The following Chargebee features are currently supported:
 
-* One time checkout
-* Subscription checkout
+* Checkout one time charges
+* Checkout subscription plan
 * Manage payment methods
-* Open customer portal
-* Log incoming webhook events
+* Customer portal
+* Handle incoming webhook events
 
 **Note: The CLI does not provide additional UI components. It uses the Chargebee Node SDK to invoke the relevant APIs from your backend service**
 
