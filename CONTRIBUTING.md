@@ -145,14 +145,6 @@ nextjs-app
 
 ### Compatibility
 
-Runtimes: Node.js, Deno, bun
+Runtimes: Node.js, bun
 
-Frameworks: Next.js, Express, Nuxt.js, Hono
-
-* Generate routes, controllers and glue code for checkout, portal and webhook
-* Run a standardized test suite with mock data against your app server
-* Validate API inputs with strong types and runtime validation with Zod/ArkType
-
-User authentication: Better Auth, Clerk, Auth.js
-
-ORMs: Prisma, Drizzle
+Frameworks: Next.js, Express
