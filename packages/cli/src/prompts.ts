@@ -12,7 +12,7 @@ type Prompt = Parameters<typeof Enquirer.prompt>[0];
 export const targetDirPrompt = (cwd: string): Prompt => ({
 	type: "text",
 	name: "targetDir",
-	message: `Where do you want to ?`,
+	message: `Path to your existing app`,
 	initial: cwd,
 	validate(path) {
 		if (!(fs.existsSync(path) && fs.lstatSync(path).isDirectory())) {
@@ -40,4 +40,33 @@ ${colors.cyanBright(help.messages[framework.name].preinit)}
 
 The next step is to create the required files and update package.json with the dependencies.
 ${colors.green("Do you want to continue?")}`,
+});
+
+export const apiAuthPrompt = (): Prompt => [
+	{
+		type: "input",
+		name: "siteName",
+		message: "Site name",
+		initial: "site-test",
+	},
+	{
+		type: "password",
+		name: "apiKey",
+		message() {
+			const siteName = (this as any).state.answers.siteName;
+			const url = `https://${siteName}.chargebee.com/apikeys_and_webhooks/api`;
+			return `API key [${colors.underline(colors.gray(url))}]`;
+		},
+	},
+];
+
+export const pathPrefixPrompt = (): Prompt => ({
+	type: "input",
+	name: "pathPrefix",
+	message:
+		"The base path prefix for all the routes created. You can edit the generated files to change this later",
+	initial: "",
+	result(value) {
+		return value.trim() ? `/${value.trim().replace(/^\/*|\/*$/g, "")}` : "";
+	},
 });

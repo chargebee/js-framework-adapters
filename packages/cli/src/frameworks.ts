@@ -7,11 +7,11 @@ export type Framework = "nextjs" | "express";
 export type Features = "checkout" | "webhook";
 
 export interface FrameworkInfo {
-		packageName: string; // NPM package name
-		minVersion: string; // Minimum supported semver
-		dependencies: string[]; // List of dependencies to add to package.json
-		appDirectories: string[]; // Expected structure of app directories
-	}
+	packageName: string; // NPM package name
+	minVersion: string; // Minimum supported semver
+	dependencies: string[]; // List of dependencies to add to package.json
+	appDirectories: string[]; // Expected structure of app directories
+}
 
 export const supportedFrameworks: Record<Framework, FrameworkInfo> = {
 	nextjs: {

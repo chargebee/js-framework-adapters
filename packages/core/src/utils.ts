@@ -35,3 +35,20 @@ export function validateBasicAuth(
 		throw new Error(`Incoming webhook authorization failed`);
 	}
 }
+
+export function callsites(): NodeJS.CallSite[] {
+	const _prepareStackTrace = Error.prepareStackTrace;
+	try {
+		let result: NodeJS.CallSite[] = [];
+		Error.prepareStackTrace = (_, callSites) => {
+			const callSitesWithoutCurrent = callSites.slice(1);
+			result = callSitesWithoutCurrent;
+			return callSitesWithoutCurrent;
+		};
+
+		new Error().stack;
+		return result;
+	} finally {
+		Error.prepareStackTrace = _prepareStackTrace;
+	}
+}

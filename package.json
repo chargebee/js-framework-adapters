@@ -6,9 +6,9 @@
     "node": ">=20",
     "pnpm": ">=10"
   },
-  "packageManager": "pnpm@10.11.1",
+  "packageManager": "pnpm@10.12.3",
   "devDependencies": {
-    "@biomejs/biome": "2.0.0-beta.6",
+    "@biomejs/biome": "^2.0.6",
     "@sindresorhus/tsconfig": "^7.0.0",
     "@types/node": "22.15.2",
     "typescript": "^5.8.3"
@@ -20,7 +20,6 @@
     "link:all": "for p in packages/*; do pushd $p; npm link; popd; done",
     "unlink:all": "for p in packages/*; do pushd $p; npm unlink --global --link; popd; done",
     "clean": "rm -rf packages/*/dist packages/*/*.tsbuildinfo",
-    "lint": "biome check",
-    "pnpm:devPreinstall": "pre-commit install"
+    "lint": "biome check"
   }
 }

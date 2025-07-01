@@ -1,6 +1,10 @@
 {
   "name": "@chargebee/nextjs",
-  "version": "0.1.0",
+  "version": "1.0.0-beta.1",
+  "author": {
+    "name": "Chargebee",
+    "email": "dx@chargebee.com"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.ts",
@@ -19,7 +23,7 @@
   },
   "files": ["dist"],
   "dependencies": {
-    "chargebee": "^3.7.0",
+    "chargebee": "^3.10.0",
     "zod": "^3.25.51"
   },
   "devDependencies": {

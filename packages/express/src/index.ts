@@ -10,6 +10,8 @@ import {
 
 export * from "#core";
 
+const userAgentSuffix = "Express v1.0.0-beta.1";
+
 export const createOneTimeCheckout = ({
 	apiKey,
 	site,
@@ -18,7 +20,10 @@ export const createOneTimeCheckout = ({
 	return async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const payload = await apiPayload(req);
-			const { hosted_page } = await checkout.oneTime({ apiKey, site, payload });
+			const { hosted_page } = await checkout.oneTime(
+				{ apiKey, site, userAgentSuffix },
+				payload,
+			);
 			if (hosted_page.url) {
 				return res.redirect(hosted_page.url);
 			} else {
@@ -39,11 +44,14 @@ export const createSubscriptionCheckout = ({
 	return async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const payload = await apiPayload(req);
-			const { hosted_page } = await checkout.subscription({
-				apiKey,
-				site,
+			const { hosted_page } = await checkout.subscription(
+				{
+					apiKey,
+					site,
+					userAgentSuffix,
+				},
 				payload,
-			});
+			);
 			if (hosted_page.url) {
 				return res.redirect(hosted_page.url);
 			} else {
@@ -64,11 +72,14 @@ export const managePaymentSources = ({
 	return async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const payload = await apiPayload(req);
-			const { hosted_page } = await checkout.manage({
-				apiKey,
-				site,
+			const { hosted_page } = await checkout.manage(
+				{
+					apiKey,
+					site,
+					userAgentSuffix,
+				},
 				payload,
-			});
+			);
 			if (hosted_page.url) {
 				return res.redirect(hosted_page.url);
 			} else {
@@ -89,11 +100,14 @@ export const createPortalSession = ({
 	return async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const payload = await apiPayload(req);
-			const { portal_session } = await portal.create({
-				apiKey,
-				site,
+			const { portal_session } = await portal.create(
+				{
+					apiKey,
+					site,
+					userAgentSuffix,
+				},
 				payload,
-			});
+			);
 			if (portal_session.access_url) {
 				return res.redirect(portal_session.access_url);
 			} else {
