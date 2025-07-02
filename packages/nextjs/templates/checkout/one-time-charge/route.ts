@@ -2,6 +2,7 @@ import {
 	type ChargeInput,
 	client,
 	createOneTimeCheckout,
+	raiseWarning,
 } from "@chargebee/nextjs";
 import type { NextRequest } from "next/server.js";
 
@@ -9,9 +10,7 @@ export const GET = createOneTimeCheckout({
 	apiKey: process.env.CHARGEBEE_API_KEY!,
 	site: process.env.CHARGEBEE_SITE!,
 	apiPayload: async (req: NextRequest): Promise<ChargeInput> => {
-		console.warn(
-			`⚠ This is the default implementation from chargebee-init and must be reviewed!`,
-		);
+		raiseWarning();
 		const chargebee = await client.getFromEnv();
 		// https://api-explorer.chargebee.com/item_prices/list_item_prices
 		const { list } = await chargebee.itemPrice.list({

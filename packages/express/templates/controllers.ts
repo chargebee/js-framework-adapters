@@ -8,6 +8,7 @@ import {
 	type ManageInput,
 	managePaymentSources,
 	type PortalCreateInput,
+	raiseWarning,
 	type SubscriptionInput,
 	validateBasicAuth,
 } from "@chargebee/express";
@@ -26,9 +27,7 @@ const chargeController = createOneTimeCheckout({
 	apiKey,
 	site,
 	apiPayload: async (req: Request) => {
-		console.warn(
-			`⚠ This is the default implementation from chargebee-init and must be reviewed!`,
-		);
+		raiseWarning();
 		// https://api-explorer.chargebee.com/item_prices/list_item_prices
 		const { list } = await chargebee.itemPrice.list({
 			item_type: {
@@ -55,9 +54,7 @@ const subscriptionController = createSubscriptionCheckout({
 	apiKey,
 	site,
 	apiPayload: async (req: Request) => {
-		console.warn(
-			`⚠ This is the default implementation from chargebee-init and must be reviewed!`,
-		);
+		raiseWarning();
 		// https://api-explorer.chargebee.com/item_prices/list_item_prices
 		const { list } = await chargebee.itemPrice.list({
 			limit: 1,
@@ -83,9 +80,7 @@ const manageController = managePaymentSources({
 	apiKey,
 	site,
 	apiPayload: async (req: Request) => {
-		console.warn(
-			`⚠ This is the default implementation from chargebee-init and must be reviewed!`,
-		);
+		raiseWarning();
 		// https://apidocs.chargebee.com/docs/api/hosted_pages?lang=node#manage_payment_sources
 		return {
 			customer: {
@@ -104,9 +99,7 @@ const portalController = createPortalSession({
 	apiKey,
 	site,
 	apiPayload: async (req: Request) => {
-		console.warn(
-			`⚠ This is the default implementation from chargebee-init and must be reviewed!`,
-		);
+		raiseWarning();
 		// TODO: Return the authenticated customer here
 		return {
 			customer: {
@@ -121,9 +114,7 @@ const portalController = createPortalSession({
  * Checkout callback function
  */
 async function callbackController(req: Request, _res: Response) {
-	console.warn(
-		`⚠ This is the default implementation from chargebee-init and must be reviewed!`,
-	);
+	raiseWarning();
 	const { searchParams } = new URL(req.originalUrl);
 	const id = searchParams.get("id");
 	const state = searchParams.get("state");
@@ -137,9 +128,7 @@ async function callbackController(req: Request, _res: Response) {
  * Handle incoming webhook events
  */
 async function webhookController(req: Request, _res: Response) {
-	console.warn(
-		`⚠ This is the default implementation from chargebee-init and must be reviewed!`,
-	);
+	raiseWarning();
 	// HTTP Basic Auth is currently optional when adding a new webhook
 	// url in the Chargebee dashboard. However, we expect it's set by default.
 	// Please set the env variable CHARGEBEE_WEBHOOK_BASIC_AUTH to "user:pass"
