@@ -31,5 +31,16 @@ jobs:
       - name: Lint
         run: pnpm lint
       
+      - name: Publish config
+        run: |
+          pnpm config set '//registry.npmjs.org/:_authToken' "${NODE_AUTH_TOKEN}"
+          if [ "${{ github.event.release.prerelease }}" = "true" ]; then
+            echo "TAG=beta" >> "$GITHUB_ENV"
+          else
+            echo "TAG=latest" >> "$GITHUB_ENV"
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      
       - name: Publish
-        run: pnpm publish --recursive
+        run: pnpm publish --recursive --access public --tag "$TAG"
