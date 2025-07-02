@@ -10,7 +10,7 @@ export const GET = createSubscriptionCheckout({
 	apiKey: process.env.CHARGEBEE_API_KEY!,
 	site: process.env.CHARGEBEE_SITE!,
 	apiPayload: async (req: NextRequest): Promise<SubscriptionInput> => {
-		raiseWarning;
+		raiseWarning();
 		const chargebee = await client.getFromEnv();
 		// https://api-explorer.chargebee.com/item_prices/list_item_prices
 		const { list } = await chargebee.itemPrice.list({
