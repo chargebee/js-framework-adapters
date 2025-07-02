@@ -17,13 +17,13 @@ export const supportedFrameworks: Record<Framework, FrameworkInfo> = {
 	nextjs: {
 		packageName: "next",
 		minVersion: "15",
-		dependencies: ["@chargebee/nextjs:~0.1.0"],
+		dependencies: ["@chargebee/nextjs:^1.0.0"],
 		appDirectories: ["app", path.join("src", "app")],
 	},
 	express: {
 		packageName: "express",
 		minVersion: ">=5",
-		dependencies: ["@chargebee/express:~0.1.0"],
+		dependencies: ["@chargebee/express:^1.0.0"],
 		appDirectories: ["app", "src"],
 	},
 } as const;
