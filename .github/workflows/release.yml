@@ -43,4 +43,4 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       
       - name: Publish
-        run: pnpm publish --recursive --access public --tag "$TAG"
+        run: pnpm publish --recursive --no-git-checks --access public --tag "$TAG"
