@@ -1,10 +1,8 @@
-import { client } from "@chargebee/nextjs";
+import { client, raiseWarning } from "@chargebee/nextjs";
 import type { NextRequest } from "next/server.js";
 
 export const GET = async (req: NextRequest) => {
-	console.warn(
-		`⚠ This is the default implementation from chargebee-init and must be reviewed!`,
-	);
+	raiseWarning();
 	const id = req.nextUrl.searchParams.get("id");
 	const state = req.nextUrl.searchParams.get("state");
 	// TODO: validate state and do something with the hosted page id

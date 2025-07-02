@@ -1,3 +1,5 @@
+import { styleText } from "node:util";
+
 export function validateApiAuth(apiKey: string, site: string) {
 	if (!apiKey || !site) {
 		throw new Error(
@@ -36,19 +38,11 @@ export function validateBasicAuth(
 	}
 }
 
-export function callsites(): NodeJS.CallSite[] {
-	const _prepareStackTrace = Error.prepareStackTrace;
-	try {
-		let result: NodeJS.CallSite[] = [];
-		Error.prepareStackTrace = (_, callSites) => {
-			const callSitesWithoutCurrent = callSites.slice(1);
-			result = callSitesWithoutCurrent;
-			return callSitesWithoutCurrent;
-		};
-
-		new Error().stack;
-		return result;
-	} finally {
-		Error.prepareStackTrace = _prepareStackTrace;
-	}
+export function raiseWarning() {
+	console.trace(
+		styleText(
+			["yellowBright"],
+			`This is the default implementation from a chargebee-init generated template. Please review the handler and remove the ${styleText(["bold", "underline"], "raiseWarning")} function call to hide this stack trace.`,
+		),
+	);
 }
