@@ -1,6 +1,6 @@
 {
   "name": "@chargebee/nextjs",
-  "version": "1.0.0-beta.2",
+  "version": "1.0.0",
   "author": {
     "name": "Chargebee",
     "email": "dx@chargebee.com"

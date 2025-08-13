@@ -10,7 +10,7 @@ import {
 
 export * from "#core";
 
-const userAgentSuffix = "Express v1.0.0-beta.1";
+const userAgentSuffix = "Express v1.0.0";
 
 export const createOneTimeCheckout = ({
 	apiKey,
