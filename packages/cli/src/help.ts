@@ -31,7 +31,7 @@ export const messages = {
 * --------------------------
 * Chargebee Next.js Adapter
 * --------------------------
-* Integrates with Next.js version 15 
+* Integrates with Next.js version 15
 * Only App Router is supported at the moment
 * Routes will be created under the chargebee directory by default
 `,
