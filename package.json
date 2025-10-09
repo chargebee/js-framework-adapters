@@ -22,7 +22,6 @@
     "unlink:all": "for p in packages/*; do pushd $p; npm unlink --global --link; popd; done",
     "clean": "rm -rf packages/*/dist packages/*/*.tsbuildinfo",
     "lint": "biome check",
-    "format": "biome format",
-    "prepare": "pre-commit install"
+    "format": "biome format"
   }
 }

@@ -9,7 +9,7 @@ repos:
       - id: pnpm-lint
         name: Biome lint
         entry: pnpm
-        args: ["lint"]
+        args: ["lint", "--fix"]
         language: system
         pass_filenames: false
         always_run: true
@@ -17,7 +17,7 @@ repos:
       - id: pnpm-format
         name: Biome format
         entry: pnpm
-        args: ["format"]
+        args: ["format", "--fix"]
         language: system
         pass_filenames: false
         always_run: true
