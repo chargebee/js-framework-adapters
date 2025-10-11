@@ -30,7 +30,7 @@ jobs:
 
       - name: Lint
         run: pnpm lint
-      
+
       - name: Publish config
         run: |
           pnpm config set '//registry.npmjs.org/:_authToken' "${NODE_AUTH_TOKEN}"
@@ -41,6 +41,6 @@ jobs:
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      
+
       - name: Publish
         run: pnpm publish --recursive --no-git-checks --access public --tag "$TAG"

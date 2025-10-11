@@ -6,6 +6,7 @@
     "email": "dx@chargebee.com"
   },
   "description": "A CLI to help integrate Chargebee services with your existing app",
+  "repository": "https://github.com/chargebee/js-framework-adapters",
   "type": "module",
   "exports": "./dist/cli.js",
   "bin": {

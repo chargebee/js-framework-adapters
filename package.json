@@ -1,14 +1,15 @@
 {
   "name": "@chargebee/js-framework-adapters",
+  "repository": "https://github.com/chargebee/js-framework-adapters",
   "private": true,
   "license": "MIT",
   "engines": {
     "node": ">=20",
     "pnpm": ">=10"
   },
-  "packageManager": "pnpm@10.14.0",
+  "packageManager": "pnpm@10.18.1",
   "devDependencies": {
-    "@biomejs/biome": "^2.1.4",
+    "@biomejs/biome": "^2.2.2",
     "@sindresorhus/tsconfig": "^7.0.0",
     "@types/node": "22.15.2",
     "typescript": "^5.9.2"
@@ -20,6 +21,7 @@
     "link:all": "for p in packages/*; do pushd $p; npm link; popd; done",
     "unlink:all": "for p in packages/*; do pushd $p; npm unlink --global --link; popd; done",
     "clean": "rm -rf packages/*/dist packages/*/*.tsbuildinfo",
-    "lint": "biome check"
+    "lint": "biome check",
+    "format": "biome format"
   }
 }
