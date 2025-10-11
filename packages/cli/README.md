@@ -52,3 +52,7 @@ It can also be installed globally as a NPM package:
 ```
 npm install -g chargebee-init
 ```
+
+## Feedback
+
+If you find any bugs or have any questions / feedback, open an issue in this repository or reach out to us on dx@chargebee.com
