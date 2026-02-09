@@ -10,17 +10,30 @@ Usage
 	$ chargebee-init <command> [subcommand]
 
 Options
-	--help display this help text
+	--path Path to the app with a supported framework in package.json
+	--dangerously-skip-checks Skip all checks and prompts. Use this only if you know what you are doing!
 
 Examples
 	$ chargebee-init
-	$ chargebee-init help
+	$ chargebee-init --path /path/to/my-app --dangerously-skip-checks
 	$ chargebee-init help nextjs|express
   `,
 	{
 		importMeta: import.meta,
 		autoHelp: true,
 		autoVersion: true,
+		flags: {
+			path: {
+				type: "string",
+				isRequired: (flags) => {
+					return !!flags.dangerouslySkipChecks;
+				},
+			},
+			dangerouslySkipChecks: {
+				type: "boolean",
+				default: false,
+			},
+		},
 	},
 );
 
@@ -29,7 +42,7 @@ export async function run() {
 	switch (command) {
 		case "":
 		case "init":
-			await init();
+			await init(cli.flags);
 			break;
 
 		case "help":
