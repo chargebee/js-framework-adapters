@@ -89,3 +89,7 @@ export interface SubscriptionItemRecord {
 	unitPrice: number | null;
 	amount: number | null;
 }
+
+export type WithChargebeeCustomerId = {
+	chargebeeCustomerId?: string;
+};
