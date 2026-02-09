@@ -4,12 +4,12 @@ import type { Customer } from "chargebee";
 export interface ChargebeePlan {
 	name: string;
 	itemPriceId: string;
-	itemId: string;
-	itemFamilyId: string;
+	itemId?: string;
+	itemFamilyId?: string;
 	type: "plan" | "addon" | "charges";
-	trialPeriod: number;
-	trialPeriodUnit: "day" | "month";
-	billingCycles: number;
+	trialPeriod?: number;
+	trialPeriodUnit?: "day" | "month";
+	billingCycles?: number;
 }
 
 export type SubscriptionItemType = "plan" | "addon" | "charge";
