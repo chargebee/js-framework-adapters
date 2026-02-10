@@ -1,4 +1,9 @@
-import { APIError, createAuthEndpoint, originCheck } from "better-auth/api";
+import {
+	APIError,
+	createAuthEndpoint,
+	getSessionFromCtx,
+	originCheck,
+} from "better-auth/api";
 import type { Organization } from "better-auth/plugins/organization";
 import { z } from "zod";
 import { CHARGEBEE_ERROR_CODES } from "./error-codes";
@@ -14,6 +19,7 @@ import {
 	getReferenceId,
 	getUrl,
 	isActiveOrTrialing,
+	isPendingCancel,
 } from "./utils";
 
 export function getWebhookEndpoint(options: ChargebeeOptions) {
@@ -529,6 +535,300 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 					redirect: !ctx.body.disableRedirect,
 				});
 			} catch (e: any) {
+				throw ctx.error("BAD_REQUEST", {
+					message: e.message,
+					code: e.api_error_code,
+				});
+			}
+		},
+	);
+}
+
+/**
+ * Callback endpoint after subscription cancellation
+ * Checks if cancellation was successful and updates the database
+ */
+export function cancelSubscriptionCallback(options: ChargebeeOptions) {
+	const cb = options.chargebeeClient;
+	const subscriptionOptions = options.subscription as SubscriptionOptions;
+
+	return createAuthEndpoint(
+		"/subscription/cancel/callback",
+		{
+			method: "GET",
+			query: z
+				.object({
+					callbackURL: z.string(),
+					subscriptionId: z.string(),
+				})
+				.partial(),
+			metadata: {
+				openapi: {
+					operationId: "cancelSubscriptionCallback",
+				},
+			},
+			use: [originCheck((ctx) => ctx.query?.callbackURL)],
+		},
+		async (ctx) => {
+			const callbackURL = ctx.query?.callbackURL || "/";
+			const subscriptionId = ctx.query?.subscriptionId;
+
+			if (!callbackURL || !subscriptionId) {
+				throw ctx.redirect(getUrl(ctx, callbackURL));
+			}
+
+			const session = await getSessionFromCtx<
+				WithChargebeeCustomerId & { id: string }
+			>(ctx);
+			if (!session) {
+				throw ctx.redirect(getUrl(ctx, callbackURL));
+			}
+
+			const { user } = session;
+
+			if (user?.chargebeeCustomerId) {
+				try {
+					const subscription = await ctx.context.adapter.findOne<Subscription>({
+						model: "subscription",
+						where: [
+							{
+								field: "id",
+								value: subscriptionId,
+							},
+						],
+					});
+
+					if (
+						!subscription ||
+						subscription.status === "cancelled" ||
+						isPendingCancel(subscription)
+					) {
+						throw ctx.redirect(getUrl(ctx, callbackURL));
+					}
+
+					// Fetch subscription from Chargebee to check current status
+					if (subscription.chargebeeSubscriptionId) {
+						try {
+							const chargebeeSubResult = await cb.subscription.retrieve(
+								subscription.chargebeeSubscriptionId,
+							);
+							const chargebeeSub = chargebeeSubResult.subscription;
+
+							// Check if subscription was cancelled
+							const isCancelled =
+								chargebeeSubResult.subscription.status === "cancelled" ||
+								!!chargebeeSub.cancelled_at;
+
+							if (isCancelled && !subscription.canceledAt) {
+								// Update DB with cancellation info
+								await ctx.context.adapter.update({
+									model: "subscription",
+									update: {
+										status: chargebeeSub.status,
+										canceledAt: chargebeeSub.cancelled_at
+											? new Date(chargebeeSub.cancelled_at * 1000)
+											: new Date(),
+									},
+									where: [
+										{
+											field: "id",
+											value: subscription.id,
+										},
+									],
+								});
+
+								// Call onSubscriptionCancel callback
+								await subscriptionOptions.onSubscriptionDeleted?.({
+									subscription: {
+										...subscription,
+										status: chargebeeSub.status as any,
+										canceledAt: chargebeeSub.cancelled_at
+											? new Date(chargebeeSub.cancelled_at * 1000)
+											: new Date(),
+									},
+								});
+							}
+						} catch (error) {
+							ctx.context.logger.error(
+								"Error checking subscription status from Chargebee",
+								error,
+							);
+						}
+					}
+				} catch (error) {
+					ctx.context.logger.error(
+						"Error in cancel subscription callback",
+						error,
+					);
+				}
+			}
+
+			throw ctx.redirect(getUrl(ctx, callbackURL));
+		},
+	);
+}
+
+/**
+ * Cancel subscription endpoint
+ * Opens Chargebee portal to cancel subscription
+ */
+export function cancelSubscription(options: ChargebeeOptions) {
+	const cb = options.chargebeeClient;
+	const subscriptionOptions = options.subscription as SubscriptionOptions;
+
+	return createAuthEndpoint(
+		"/subscription/cancel",
+		{
+			method: "POST",
+			body: z.object({
+				referenceId: z.string().optional(),
+				subscriptionId: z.string().optional(),
+				customerType: z.enum(["user", "organization"]).optional(),
+				returnUrl: z.string(),
+				disableRedirect: z.boolean().optional(),
+			}),
+			metadata: {
+				openapi: {
+					operationId: "cancelSubscription",
+				},
+			},
+			use: [
+				sessionMiddleware,
+				referenceMiddleware(subscriptionOptions, "cancel-subscription"),
+				originCheck((ctx) => ctx.body.returnUrl),
+			],
+		},
+		async (ctx) => {
+			const customerType = ctx.body.customerType || "user";
+			const referenceId =
+				ctx.body.referenceId ||
+				getReferenceId(ctx.context.session, customerType, options);
+
+			// Find subscription to cancel
+			let subscription = ctx.body.subscriptionId
+				? await ctx.context.adapter.findOne<Subscription>({
+						model: "subscription",
+						where: [
+							{
+								field: "chargebeeSubscriptionId",
+								value: ctx.body.subscriptionId,
+							},
+						],
+					})
+				: await ctx.context.adapter
+						.findMany<Subscription>({
+							model: "subscription",
+							where: [{ field: "referenceId", value: referenceId }],
+						})
+						.then((subs) => subs.find((sub) => isActiveOrTrialing(sub)));
+
+			// Verify subscription belongs to the reference
+			if (
+				ctx.body.subscriptionId &&
+				subscription &&
+				subscription.referenceId !== referenceId
+			) {
+				subscription = undefined;
+			}
+
+			if (!subscription || !subscription.chargebeeCustomerId) {
+				throw new APIError("BAD_REQUEST", {
+					message: CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND,
+				});
+			}
+
+			// Get active subscriptions from Chargebee
+			const chargebeeSubsList = await cb.subscription.list({
+				limit: 100,
+			} as any);
+
+			const activeSubscriptions =
+				chargebeeSubsList?.list
+					?.filter(
+						(item: any) =>
+							item.subscription.customer_id ===
+								subscription.chargebeeCustomerId &&
+							(item.subscription.status === "active" ||
+								item.subscription.status === "in_trial"),
+					)
+					.map((item: any) => item.subscription) || [];
+
+			if (!activeSubscriptions.length) {
+				// No active subscriptions found in Chargebee, delete from DB
+				await ctx.context.adapter.deleteMany({
+					model: "subscription",
+					where: [
+						{
+							field: "referenceId",
+							value: referenceId,
+						},
+					],
+				});
+				throw new APIError("BAD_REQUEST", {
+					message: CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND,
+				});
+			}
+
+			const activeSubscription = activeSubscriptions.find(
+				(sub: any) => sub.id === subscription.chargebeeSubscriptionId,
+			);
+
+			if (!activeSubscription) {
+				throw new APIError("BAD_REQUEST", {
+					message: CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND,
+				});
+			}
+
+			// Create portal session for cancellation
+			try {
+				const portalSession = await cb.portalSession.create({
+					customer: { id: subscription.chargebeeCustomerId },
+					redirect_url: getUrl(
+						ctx,
+						`${ctx.context.baseURL}/subscription/cancel/callback?callbackURL=${encodeURIComponent(
+							ctx.body.returnUrl || "/",
+						)}&subscriptionId=${encodeURIComponent(subscription.id)}`,
+					),
+				});
+
+				return ctx.json({
+					url: portalSession.portal_session.access_url,
+					redirect: !ctx.body.disableRedirect,
+				});
+			} catch (e: any) {
+				// Check if subscription is already cancelled
+				if (e.message?.includes("already") || e.message?.includes("cancel")) {
+					// Sync state from Chargebee
+					if (!isPendingCancel(subscription)) {
+						try {
+							const chargebeeSubResult = await cb.subscription.retrieve(
+								activeSubscription.id,
+							);
+							const chargebeeSub = chargebeeSubResult.subscription;
+
+							await ctx.context.adapter.update({
+								model: "subscription",
+								update: {
+									canceledAt: chargebeeSub.cancelled_at
+										? new Date(chargebeeSub.cancelled_at * 1000)
+										: new Date(),
+								},
+								where: [
+									{
+										field: "id",
+										value: subscription.id,
+									},
+								],
+							});
+						} catch (retrieveError) {
+							ctx.context.logger.error(
+								"Error retrieving subscription from Chargebee",
+								retrieveError,
+							);
+						}
+					}
+				}
+
 				throw ctx.error("BAD_REQUEST", {
 					message: e.message,
 					code: e.api_error_code,

@@ -1,7 +1,12 @@
 import type { BetterAuthPlugin, User } from "better-auth";
 import type { Customer } from "chargebee";
 import { customerMetadata } from "./metadata";
-import { getWebhookEndpoint, upgradeSubscription } from "./routes";
+import {
+	cancelSubscription,
+	cancelSubscriptionCallback,
+	getWebhookEndpoint,
+	upgradeSubscription,
+} from "./routes";
 import { getSchema } from "./schema";
 import type { ChargebeeOptions, WithChargebeeCustomerId } from "./types";
 
@@ -14,6 +19,8 @@ export const chargebee = (options: ChargebeeOptions) => {
 		endpoints: {
 			chargebeeWebhook: getWebhookEndpoint(options),
 			upgradeSubscription: upgradeSubscription(options),
+			cancelSubscription: cancelSubscription(options),
+			cancelSubscriptionCallback: cancelSubscriptionCallback(options),
 		},
 
 		init(ctx) {
