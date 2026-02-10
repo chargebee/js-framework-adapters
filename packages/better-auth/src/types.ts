@@ -32,9 +32,7 @@ export type SubscriptionStatus =
 	| "non_renewing"
 	| "paused"
 	| "cancelled"
-	| "transferred"
-	| "incomplete"
-	| "trialing";
+	| "transferred";
 
 export type CustomerType = "user" | "organization";
 
@@ -121,7 +119,6 @@ export interface ChargebeeOptions {
 
 export interface Subscription {
 	id: string;
-	plan: string;
 	referenceId: string;
 	chargebeeCustomerId?: string | null;
 	chargebeeSubscriptionId?: string | null;

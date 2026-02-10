@@ -1,14 +1,3 @@
-const CUSTOMER_PROTECTED = [
-	"userId",
-	"customerType",
-	"organizationId",
-] as const;
-const SUBSCRIPTION_PROTECTED = [
-	"referenceId",
-	"subscriptionId",
-	"plan",
-] as const;
-
 export const customerMetadata = {
 	set(
 		userMetadata: Record<string, string> | undefined,

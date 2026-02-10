@@ -12,15 +12,429 @@ import type {
 	ChargebeeOptions,
 	Subscription,
 	SubscriptionOptions,
+	SubscriptionStatus,
 	WithChargebeeCustomerId,
 } from "./types";
 import {
-	getPlanByName,
 	getReferenceId,
 	getUrl,
 	isActiveOrTrialing,
 	isPendingCancel,
 } from "./utils";
+
+/**
+ * Handle subscription events (created, activated, changed, renewed)
+ * Syncs subscription data and populates subscription items
+ */
+async function handleSubscriptionEvent(
+	ctx: any,
+	content: any,
+	_options: ChargebeeOptions,
+) {
+	const subscription = content.subscription;
+	const customer = content.customer;
+
+	if (!subscription || !customer) {
+		ctx.context.logger.warn(
+			"Missing subscription or customer in webhook event",
+		);
+		return;
+	}
+
+	// Log the metadata for debugging
+	ctx.context.logger.info(
+		`Processing subscription ${subscription.id} with metadata:`,
+		subscription.meta_data,
+	);
+
+	// Find the subscription in our database by Chargebee subscription ID
+	let dbSubscription = await ctx.context.adapter.findOne({
+		model: "subscription",
+		where: [
+			{
+				field: "chargebeeSubscriptionId",
+				value: subscription.id,
+			},
+		],
+	});
+
+	// If not found by Chargebee ID, try to find by metadata subscriptionId
+	if (!dbSubscription && subscription.meta_data?.subscriptionId) {
+		ctx.context.logger.info(
+			`Looking for subscription by ID: ${subscription.meta_data.subscriptionId}`,
+		);
+		dbSubscription = await ctx.context.adapter.findOne({
+			model: "subscription",
+			where: [
+				{
+					field: "id",
+					value: subscription.meta_data.subscriptionId,
+				},
+			],
+		});
+
+		if (dbSubscription) {
+			ctx.context.logger.info(
+				`Found subscription by metadata ID: ${dbSubscription.id}`,
+			);
+		}
+	}
+
+	// If still not found, try to find by customer metadata (for hosted pages)
+	if (!dbSubscription && customer.meta_data?.pendingSubscriptionId) {
+		ctx.context.logger.info(
+			`Looking for subscription by customer metadata: ${customer.meta_data.pendingSubscriptionId}`,
+		);
+		dbSubscription = await ctx.context.adapter.findOne({
+			model: "subscription",
+			where: [
+				{
+					field: "id",
+					value: customer.meta_data.pendingSubscriptionId,
+				},
+			],
+		});
+
+		if (dbSubscription) {
+			ctx.context.logger.info(
+				`Found subscription via customer metadata: ${dbSubscription.id}`,
+			);
+
+			// Clear the pending subscription from customer metadata
+			try {
+				await _options.chargebeeClient.customer.update(customer.id, {
+					meta_data: {
+						pendingSubscriptionId: null,
+						pendingReferenceId: null,
+					},
+				});
+			} catch (e) {
+				ctx.context.logger.warn("Failed to clear customer metadata", e);
+			}
+		}
+	}
+
+	// If still not found, try to find by referenceId from customer metadata
+	if (!dbSubscription && customer.meta_data?.pendingReferenceId) {
+		ctx.context.logger.info(
+			`Looking for subscription by referenceId from customer: ${customer.meta_data.pendingReferenceId}`,
+		);
+		const subscriptions = await ctx.context.adapter.findMany({
+			model: "subscription",
+			where: [
+				{
+					field: "referenceId",
+					value: customer.meta_data.pendingReferenceId,
+				},
+			],
+		});
+
+		// Find subscription that matches the customer and doesn't have a Chargebee ID yet
+		dbSubscription = subscriptions.find(
+			(sub: any) =>
+				sub.chargebeeCustomerId === customer.id && !sub.chargebeeSubscriptionId,
+		);
+
+		if (dbSubscription) {
+			ctx.context.logger.info(
+				`Found subscription by referenceId from customer: ${dbSubscription.id}`,
+			);
+		}
+	}
+
+	// Map Chargebee status to our status type
+	const status: SubscriptionStatus = subscription.status as SubscriptionStatus;
+
+	// Prepare subscription update data
+	const subscriptionData: any = {
+		chargebeeSubscriptionId: subscription.id,
+		chargebeeCustomerId: customer.id,
+		status: status,
+		periodStart: subscription.current_term_start
+			? new Date(subscription.current_term_start * 1000)
+			: null,
+		periodEnd: subscription.current_term_end
+			? new Date(subscription.current_term_end * 1000)
+			: null,
+		trialStart: subscription.trial_start
+			? new Date(subscription.trial_start * 1000)
+			: null,
+		trialEnd: subscription.trial_end
+			? new Date(subscription.trial_end * 1000)
+			: null,
+		canceledAt: subscription.cancelled_at
+			? new Date(subscription.cancelled_at * 1000)
+			: null,
+		updatedAt: new Date(),
+	};
+
+	if (dbSubscription) {
+		// Update existing subscription
+		await ctx.context.adapter.update({
+			model: "subscription",
+			update: subscriptionData,
+			where: [{ field: "id", value: dbSubscription.id }],
+		});
+	} else {
+		// Create new subscription record if it doesn't exist
+		// This handles cases where subscription was created directly in Chargebee
+		const referenceId =
+			subscription.meta_data?.referenceId ||
+			subscription.meta_data?.userId ||
+			subscription.meta_data?.organizationId;
+
+		if (referenceId) {
+			ctx.context.logger.info(
+				`Creating new subscription with referenceId: ${referenceId}`,
+			);
+			dbSubscription = await ctx.context.adapter.create({
+				model: "subscription",
+				data: {
+					...subscriptionData,
+					referenceId,
+					seats: 1,
+				},
+			});
+		} else {
+			ctx.context.logger.warn(
+				`Cannot create subscription: missing referenceId in metadata. Subscription ID: ${subscription.id}, Metadata:`,
+				JSON.stringify(subscription.meta_data),
+			);
+			return;
+		}
+	}
+
+	// Sync subscription items
+	if (dbSubscription && subscription.subscription_items) {
+		// Delete existing subscription items
+		await ctx.context.adapter.deleteMany({
+			model: "subscriptionItem",
+			where: [{ field: "subscriptionId", value: dbSubscription.id }],
+		});
+
+		// Create new subscription items
+		for (const item of subscription.subscription_items) {
+			await ctx.context.adapter.create({
+				model: "subscriptionItem",
+				data: {
+					subscriptionId: dbSubscription.id,
+					itemPriceId: item.item_price_id,
+					itemType: item.item_type || "plan",
+					quantity: item.quantity || 1,
+					unitPrice: item.unit_price || null,
+					amount: item.amount || null,
+				},
+			});
+		}
+
+		ctx.context.logger.info(
+			`Synced ${subscription.subscription_items.length} subscription items for subscription ${dbSubscription.id}`,
+		);
+	}
+}
+
+/**
+ * Handle subscription cancellation events
+ */
+async function handleSubscriptionCancellation(
+	ctx: any,
+	content: any,
+	options: ChargebeeOptions,
+) {
+	const subscription = content.subscription;
+
+	if (!subscription) {
+		ctx.context.logger.warn("Missing subscription in cancellation event");
+		return;
+	}
+
+	const dbSubscription = await ctx.context.adapter.findOne({
+		model: "subscription",
+		where: [
+			{
+				field: "chargebeeSubscriptionId",
+				value: subscription.id,
+			},
+		],
+	});
+
+	if (!dbSubscription) {
+		ctx.context.logger.warn(
+			`Subscription ${subscription.id} not found for cancellation`,
+		);
+		return;
+	}
+
+	// Update subscription status
+	await ctx.context.adapter.update({
+		model: "subscription",
+		update: {
+			status: "cancelled",
+			canceledAt: subscription.cancelled_at
+				? new Date(subscription.cancelled_at * 1000)
+				: new Date(),
+			updatedAt: new Date(),
+		},
+		where: [{ field: "id", value: dbSubscription.id }],
+	});
+
+	// Call subscription deleted callback
+	const subscriptionOptions = options.subscription as SubscriptionOptions;
+	await subscriptionOptions?.onSubscriptionDeleted?.({
+		subscription: {
+			...dbSubscription,
+			status: "cancelled",
+			canceledAt: subscription.cancelled_at
+				? new Date(subscription.cancelled_at * 1000)
+				: new Date(),
+		},
+	});
+
+	ctx.context.logger.info(
+		`Subscription ${dbSubscription.id} cancelled successfully`,
+	);
+}
+
+/**
+ * Handle customer deletion events
+ */
+async function handleCustomerDeletion(
+	ctx: any,
+	content: any,
+	_options: ChargebeeOptions,
+) {
+	const customer = content.customer;
+
+	if (!customer) {
+		ctx.context.logger.warn("Missing customer in deletion event");
+		return;
+	}
+
+	// Delete all subscriptions for this customer
+	const subscriptions = await ctx.context.adapter.findMany({
+		model: "subscription",
+		where: [
+			{
+				field: "chargebeeCustomerId",
+				value: customer.id,
+			},
+		],
+	});
+
+	for (const subscription of subscriptions) {
+		// Delete subscription items first (due to foreign key constraint)
+		await ctx.context.adapter.deleteMany({
+			model: "subscriptionItem",
+			where: [{ field: "subscriptionId", value: subscription.id }],
+		});
+
+		// Delete subscription
+		await ctx.context.adapter.deleteMany({
+			model: "subscription",
+			where: [{ field: "id", value: subscription.id }],
+		});
+	}
+
+	// Clear chargebeeCustomerId from user or organization
+	const customerType = customer.meta_data?.customerType;
+
+	ctx.context.logger.info(
+		`Clearing customer ${customer.id} from database (type: ${customerType})`,
+	);
+
+	// Try using metadata first
+	if (customerType === "organization") {
+		const organizationId = customer.meta_data?.organizationId;
+		if (organizationId) {
+			await ctx.context.adapter.update({
+				model: "organization",
+				update: { chargebeeCustomerId: null },
+				where: [{ field: "id", value: organizationId }],
+			});
+			ctx.context.logger.info(
+				`Cleared chargebeeCustomerId from organization ${organizationId}`,
+			);
+		}
+	} else if (customerType === "user") {
+		const userId = customer.meta_data?.userId;
+		if (userId) {
+			await ctx.context.adapter.update({
+				model: "user",
+				update: { chargebeeCustomerId: null },
+				where: [{ field: "id", value: userId }],
+			});
+			ctx.context.logger.info(
+				`Cleared chargebeeCustomerId from user ${userId}`,
+			);
+		}
+	}
+
+	// Fallback: Find user/org by chargebeeCustomerId directly
+	// This handles cases where metadata is missing or incorrect
+	try {
+		// Try to find and clear user
+		const users = await ctx.context.adapter.findMany({
+			model: "user",
+			where: [
+				{
+					field: "chargebeeCustomerId",
+					value: customer.id,
+				},
+			],
+		});
+
+		for (const user of users) {
+			await ctx.context.adapter.update({
+				model: "user",
+				update: { chargebeeCustomerId: null },
+				where: [{ field: "id", value: user.id }],
+			});
+			ctx.context.logger.info(
+				`Cleared chargebeeCustomerId from user ${user.id} (fallback)`,
+			);
+		}
+	} catch (e) {
+		ctx.context.logger.error(
+			"Error clearing chargebeeCustomerId from users:",
+			e,
+		);
+	}
+
+	// Try to find and clear organization (only if enabled)
+	if (_options.organization?.enabled) {
+		try {
+			const organizations = await ctx.context.adapter.findMany({
+				model: "organization",
+				where: [
+					{
+						field: "chargebeeCustomerId",
+						value: customer.id,
+					},
+				],
+			});
+
+			for (const org of organizations) {
+				await ctx.context.adapter.update({
+					model: "organization",
+					update: { chargebeeCustomerId: null },
+					where: [{ field: "id", value: org.id }],
+				});
+				ctx.context.logger.info(
+					`Cleared chargebeeCustomerId from organization ${org.id} (fallback)`,
+				);
+			}
+		} catch (e) {
+			ctx.context.logger.error(
+				"Error clearing chargebeeCustomerId from organizations:",
+				e,
+			);
+		}
+	}
+
+	ctx.context.logger.info(
+		`Customer ${customer.id} and associated data deleted successfully`,
+	);
+}
 
 export function getWebhookEndpoint(options: ChargebeeOptions) {
 	return createAuthEndpoint(
@@ -48,14 +462,48 @@ export function getWebhookEndpoint(options: ChargebeeOptions) {
 			const event = ctx.body as any;
 			const eventType = event?.event_type;
 			const content = event?.content;
-			console.log(eventType);
+			console.log("Chargebee webhook event:", eventType);
 
 			if (!eventType || !content) {
 				throw new APIError("BAD_REQUEST", {
 					message: "Invalid webhook payload",
 				});
 			}
-			await options.onEvent?.(event);
+
+			try {
+				// Handle different event types
+				switch (eventType) {
+					case "subscription_created":
+					case "subscription_activated":
+					case "subscription_changed":
+					case "subscription_renewed":
+					case "subscription_started":
+						await handleSubscriptionEvent(ctx, content, options);
+						break;
+
+					case "subscription_cancelled":
+					case "subscription_cancellation_scheduled":
+						await handleSubscriptionCancellation(ctx, content, options);
+						break;
+
+					case "customer_deleted":
+						await handleCustomerDeletion(ctx, content, options);
+						break;
+
+					default:
+						// Log unhandled events
+						ctx.context.logger.info(
+							`Unhandled Chargebee webhook event: ${eventType}`,
+						);
+				}
+
+				// Call user-defined event handler
+				await options.onEvent?.(event);
+			} catch (error) {
+				ctx.context.logger.error("Error processing webhook event:", error);
+				// Don't throw error to prevent webhook retries for processing issues
+			}
+
 			return ctx.json({ received: true });
 		},
 	);
@@ -84,7 +532,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 		{
 			method: "POST",
 			body: z.object({
-				plan: z.string(),
+				itemPriceId: z.union([z.string(), z.array(z.string())]),
 				successUrl: z.string(),
 				cancelUrl: z.string(),
 				returnUrl: z.string().optional(),
@@ -122,11 +570,14 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 				});
 			}
 
-			// Resolve plan
-			const plan = await getPlanByName(options, ctx.body.plan);
-			if (!plan) {
+			// Normalize itemPriceId to array
+			const itemPriceIds = Array.isArray(ctx.body.itemPriceId)
+				? ctx.body.itemPriceId
+				: [ctx.body.itemPriceId];
+
+			if (!itemPriceIds.length) {
 				throw new APIError("BAD_REQUEST", {
-					message: CHARGEBEE_ERROR_CODES.PLAN_NOT_FOUND,
+					message: "At least one item price ID is required",
 				});
 			}
 
@@ -345,36 +796,30 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 				return false;
 			});
 
-			// Get current item price ID
-			const currentItemPriceId =
-				activeSubscription?.subscription_items?.[0]?.item_price_id;
-
-			// Find incomplete subscription for reuse
-			const incompleteSubscription = subscriptions.find(
-				(sub) => sub.status === "incomplete",
+			// Find future subscription for reuse
+			const futureSubscription = subscriptions.find(
+				(sub) => sub.status === "future",
 			);
 
-			const itemPriceId = plan.itemPriceId;
-			if (!itemPriceId) {
-				throw ctx.error("BAD_REQUEST", {
-					message: "Item price ID not found for the selected plan",
-				});
-			}
+			// Check if already subscribed to same item prices
+			const currentItemPriceIds =
+				activeSubscription?.subscription_items?.map(
+					(item: any) => item.item_price_id,
+				) || [];
 
-			// Check if already subscribed to same plan
-			const isSamePlan = activeOrTrialingSubscription?.plan === ctx.body.plan;
+			const isSameItemPrices =
+				itemPriceIds.length === currentItemPriceIds.length &&
+				itemPriceIds.every((id: string) => currentItemPriceIds.includes(id));
 			const isSameSeats =
 				activeOrTrialingSubscription?.seats === (ctx.body.seats || 1);
-			const isSameItemPrice = currentItemPriceId === itemPriceId;
 			const isSubscriptionStillValid =
 				!activeOrTrialingSubscription?.periodEnd ||
 				activeOrTrialingSubscription.periodEnd > new Date();
 
 			const isAlreadySubscribed =
 				activeOrTrialingSubscription?.status === "active" &&
-				isSamePlan &&
+				isSameItemPrices &&
 				isSameSeats &&
-				isSameItemPrice &&
 				isSubscriptionStillValid;
 
 			if (isAlreadySubscribed) {
@@ -409,51 +854,34 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 					dbSubscription = activeOrTrialingSubscription;
 				}
 
-				// Use Chargebee Portal for subscription updates
-				try {
-					const portalSession = await cb.portalSession.create({
-						customer: { id: customerId },
-						redirect_url: getUrl(ctx, ctx.body.returnUrl || "/"),
-					});
-
-					return ctx.json({
-						url: portalSession.portal_session.access_url,
-						redirect: !ctx.body.disableRedirect,
-					});
-				} catch (e: any) {
-					throw ctx.error("BAD_REQUEST", {
-						message: e.message,
-						code: e.api_error_code,
-					});
-				}
+				// Continue to hosted page checkout for upgrades
+				// (removed portal session redirect to use checkoutExistingForItems)
 			}
 
 			// Create new subscription
 			let subscription: Subscription | undefined =
-				activeOrTrialingSubscription || incompleteSubscription;
+				activeOrTrialingSubscription || futureSubscription;
 
-			// Update incomplete subscription
-			if (incompleteSubscription && !activeOrTrialingSubscription) {
-				const updated = await ctx.context.adapter.update<Subscription>({
+			// Update future subscription
+			if (futureSubscription && !activeOrTrialingSubscription) {
+				const updated = await ctx.context.adapter.update({
 					model: "subscription",
 					update: {
-						plan: plan.name.toLowerCase(),
 						seats: ctx.body.seats || 1,
 						updatedAt: new Date(),
 					},
-					where: [{ field: "id", value: incompleteSubscription.id }],
+					where: [{ field: "id", value: futureSubscription.id }],
 				});
-				subscription = (updated as Subscription) || incompleteSubscription;
+				subscription = (updated as Subscription) || futureSubscription;
 			}
 
 			// Create new subscription record
 			if (!subscription) {
-				subscription = await ctx.context.adapter.create<Subscription>({
+				subscription = await ctx.context.adapter.create({
 					model: "subscription",
 					data: {
-						plan: plan.name.toLowerCase(),
 						chargebeeCustomerId: customerId,
-						status: "incomplete",
+						status: "future",
 						referenceId,
 						seats: ctx.body.seats || 1,
 					},
@@ -467,67 +895,83 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 				});
 			}
 
-			// Check trial eligibility
-			const allSubscriptions = await ctx.context.adapter.findMany<Subscription>(
-				{
-					model: "subscription",
-					where: [{ field: "referenceId", value: referenceId }],
-				},
-			);
-
-			const hasEverTrialed = allSubscriptions.some((s) => {
-				return !!(s.trialStart || s.trialEnd) || s.status === "trialing";
-			});
-
-			const freeTrial =
-				!hasEverTrialed && plan.freeTrial
-					? {
-							trial_end:
-								Math.floor(Date.now() / 1000) + plan.freeTrial.days * 86400,
-						}
-					: undefined;
-
 			// Get custom params
 			const params = ctx.request
 				? await subscriptionOptions.getHostedPageParams?.(
-						{ user, session, plan, subscription },
+						{ user, session, plan: undefined as any, subscription },
 						ctx.request,
 						ctx,
 					)
 				: undefined;
 
-			// Create hosted page for checkout
-			const hostedPageParams: any = {
-				subscription_items: [
-					{
-						item_price_id: itemPriceId,
-						quantity: ctx.body.seats || 1,
-					},
-				],
-				customer: { id: customerId },
-				subscription: {
-					...freeTrial,
+			// Store pending subscription info in customer metadata
+			// Hosted pages don't support subscription metadata, so we use customer metadata instead
+			try {
+				await cb.customer.update(customerId, {
 					meta_data: {
+						pendingSubscriptionId: subscription.id,
+						pendingReferenceId: referenceId,
 						userId: user.id,
-						subscriptionId: subscription.id,
-						referenceId,
-						...ctx.body.metadata,
-						...params?.subscription?.meta_data,
 					},
-				},
-				redirect_url: getUrl(
-					ctx,
-					`${ctx.context.baseURL}/subscription/success?callbackURL=${encodeURIComponent(
-						ctx.body.successUrl,
-					)}&subscriptionId=${encodeURIComponent(subscription.id)}`,
-				),
-				cancel_url: getUrl(ctx, ctx.body.cancelUrl),
-				...params,
-			};
+				});
+			} catch (e) {
+				ctx.context.logger.warn("Failed to update customer metadata", e);
+			}
+
+			// Check if upgrading existing subscription or creating new one
+			const hasActiveSubscription = activeSubscription && activeSubscription.id;
 
 			try {
-				const result =
-					await cb.hostedPage.checkoutNewForItems(hostedPageParams);
+				let result;
+
+				if (hasActiveSubscription) {
+					// Upgrade existing subscription using checkoutExistingForItems
+					ctx.context.logger.info(
+						`Upgrading existing subscription ${activeSubscription.id}`,
+					);
+
+					const existingSubParams: any = {
+						subscription: {
+							id: activeSubscription.id,
+						},
+						subscription_items: itemPriceIds.map((id: string) => ({
+							item_price_id: id,
+							quantity: ctx.body.seats || 1,
+						})),
+						redirect_url: getUrl(
+							ctx,
+							`${ctx.context.baseURL}/subscription/success?callbackURL=${encodeURIComponent(
+								ctx.body.successUrl,
+							)}&subscriptionId=${encodeURIComponent(subscription.id)}`,
+						),
+						cancel_url: getUrl(ctx, ctx.body.cancelUrl),
+						...params,
+					};
+
+					result =
+						await cb.hostedPage.checkoutExistingForItems(existingSubParams);
+				} else {
+					// Create new subscription using checkoutNewForItems
+					ctx.context.logger.info("Creating new subscription via hosted page");
+
+					const newSubParams: any = {
+						subscription_items: itemPriceIds.map((id: string) => ({
+							item_price_id: id,
+							quantity: ctx.body.seats || 1,
+						})),
+						customer: { id: customerId },
+						redirect_url: getUrl(
+							ctx,
+							`${ctx.context.baseURL}/subscription/success?callbackURL=${encodeURIComponent(
+								ctx.body.successUrl,
+							)}&subscriptionId=${encodeURIComponent(subscription.id)}`,
+						),
+						cancel_url: getUrl(ctx, ctx.body.cancelUrl),
+						...params,
+					};
+
+					result = await cb.hostedPage.checkoutNewForItems(newSubParams);
+				}
 
 				return ctx.json({
 					url: result.hosted_page.url,

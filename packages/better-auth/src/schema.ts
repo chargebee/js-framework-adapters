@@ -29,10 +29,6 @@ const orgSchema = {
 const subscriptionSchema = {
 	subscription: {
 		fields: {
-			plan: {
-				type: "string" as const,
-				required: true,
-			},
 			referenceId: {
 				type: "string" as const,
 				required: true,
@@ -46,10 +42,11 @@ const subscriptionSchema = {
 				required: false,
 				unique: true,
 			},
+			// Valid status values: "future" | "in_trial" | "active" | "non_renewing" | "paused" | "cancelled" | "transferred"
 			status: {
 				type: "string" as const,
 				required: false,
-				defaultValue: "incomplete",
+				defaultValue: "future",
 			},
 			periodStart: {
 				type: "date" as const,
