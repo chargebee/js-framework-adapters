@@ -542,6 +542,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 				seats: z.number().optional(),
 				metadata: z.record(z.string(), z.unknown()).optional(),
 				disableRedirect: z.boolean().optional(),
+				trialEnd: z.number().optional(),
 			}),
 			metadata: {
 				openapi: {
@@ -557,6 +558,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 			],
 		},
 		async (ctx) => {
+			console.log(ctx.body);
 			const { user, session } = ctx.context.session;
 			const customerType = ctx.body.customerType || "user";
 			const referenceId =
@@ -933,6 +935,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 					const existingSubParams: any = {
 						subscription: {
 							id: activeSubscription.id,
+							// Note: Trials cannot be set on existing subscriptions during upgrades
 						},
 						subscription_items: itemPriceIds.map((id: string) => ({
 							item_price_id: id,
@@ -960,6 +963,11 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 							quantity: ctx.body.seats || 1,
 						})),
 						customer: { id: customerId },
+						...(ctx.body.trialEnd && {
+							subscription: {
+								trial_end: ctx.body.trialEnd,
+							},
+						}),
 						redirect_url: getUrl(
 							ctx,
 							`${ctx.context.baseURL}/subscription/success?callbackURL=${encodeURIComponent(
@@ -969,7 +977,6 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 						cancel_url: getUrl(ctx, ctx.body.cancelUrl),
 						...params,
 					};
-
 					result = await cb.hostedPage.checkoutNewForItems(newSubParams);
 				}
 
