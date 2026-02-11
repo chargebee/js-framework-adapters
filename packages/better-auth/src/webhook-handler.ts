@@ -1,6 +1,6 @@
 import type Chargebee from "chargebee";
 import type { WebhookEvent, WebhookEventType } from "chargebee";
-import { basicAuthValidator } from "chargebee";
+import { basicAuthValidator, WebhookAuthenticationError } from "chargebee";
 import type { ChargebeeOptions, SubscriptionOptions } from "./types";
 
 /**
@@ -101,8 +101,7 @@ export function createWebhookHandler(
 	 * Handle errors
 	 */
 	handler.on("error", (error: Error, { response }: any) => {
-		// Check if it's an authentication error by name (avoids instanceof issues with different class instances)
-		if (error.name === "AuthenticationError") {
+		if (error instanceof WebhookAuthenticationError) {
 			ctx.logger.warn(
 				`Webhook rejected: ${error.message}. Please verify webhookUsername and webhookPassword are correctly configured in your plugin options and that the webhook in Chargebee dashboard has matching Basic Auth credentials.`,
 			);
