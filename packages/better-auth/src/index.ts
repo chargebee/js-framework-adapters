@@ -1,5 +1,6 @@
 import type { BetterAuthPlugin, User } from "better-auth";
 import type { Customer } from "chargebee";
+import { CHARGEBEE_ERROR_CODES } from "./error-codes";
 import { customerMetadata } from "./metadata";
 import {
 	cancelSubscription,
@@ -10,7 +11,15 @@ import {
 import { getSchema } from "./schema";
 import type { ChargebeeOptions, WithChargebeeCustomerId } from "./types";
 
-export const chargebee = (options: ChargebeeOptions) => {
+declare module "@better-auth/core" {
+	interface BetterAuthPluginRegistry {
+		chargebee: {
+			creator: typeof chargebee;
+		};
+	}
+}
+
+export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 	const cb = options.chargebeeClient;
 
 	return {
@@ -22,6 +31,8 @@ export const chargebee = (options: ChargebeeOptions) => {
 			cancelSubscription: cancelSubscription(options),
 			cancelSubscriptionCallback: cancelSubscriptionCallback(options),
 		},
+		options: options as NoInfer<O>,
+		$ERROR_CODES: CHARGEBEE_ERROR_CODES,
 
 		init(ctx) {
 			return {
@@ -154,3 +165,17 @@ export const chargebee = (options: ChargebeeOptions) => {
 		},
 	} satisfies BetterAuthPlugin;
 };
+
+export type ChargebeePlugin<O extends ChargebeeOptions> = ReturnType<
+	typeof chargebee<O>
+>;
+
+export { CHARGEBEE_ERROR_CODES } from "./error-codes";
+export type {
+	ChargebeeOptions,
+	ChargebeePlan,
+	Subscription,
+	SubscriptionOptions,
+	SubscriptionStatus,
+	WithChargebeeCustomerId,
+} from "./types";
