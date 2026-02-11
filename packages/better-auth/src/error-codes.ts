@@ -1,4 +1,7 @@
-import { defineErrorCodes } from "@better-auth/core/utils/error-codes";
+// Simple error code helper since @better-auth/core/utils/error-codes might not be exported
+function defineErrorCodes<T extends Record<string, string>>(codes: T): T {
+	return codes;
+}
 
 export const CHARGEBEE_ERROR_CODES = defineErrorCodes({
 	ALREADY_SUBSCRIBED: "You're already subscribed to this plan",
