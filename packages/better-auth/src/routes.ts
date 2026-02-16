@@ -33,8 +33,14 @@ export function getWebhookEndpoint(options: ChargebeeOptions) {
 		async (ctx) => {
 			// Create webhook handler with better-auth context
 			const handler = createWebhookHandler(options, {
-				context: ctx.context,
-				adapter: ctx.context.adapter,
+				context: ctx.context as Record<string, unknown>,
+				adapter: ctx.context.adapter as unknown as {
+					findOne: <T = unknown>(params: unknown) => Promise<T | null>;
+					findMany: <T = unknown>(params: unknown) => Promise<T[]>;
+					update: (params: unknown) => Promise<unknown>;
+					deleteMany: (params: unknown) => Promise<void>;
+					create: (params: unknown) => Promise<unknown>;
+				},
 				logger: ctx.context.logger,
 			});
 
@@ -51,7 +57,13 @@ export function getWebhookEndpoint(options: ChargebeeOptions) {
 			// Call user-defined event handler if provided
 			if (options.onEvent) {
 				try {
-					await options.onEvent(ctx.body as any);
+					await options.onEvent(
+						ctx.body as {
+							event_type: string;
+							content: Record<string, unknown>;
+							[key: string]: unknown;
+						},
+					);
 				} catch (error) {
 					ctx.context.logger.error("Error in custom onEvent handler:", error);
 				}
@@ -179,17 +191,16 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 							// Search for existing customer - using metadata filter
 							const customerList = await cb.customer.list({
 								limit: 1,
-							} as any);
+							});
 
 							// Filter by organizationId in metadata
 							let chargebeeCustomer = customerList?.list?.find(
-								(item: any) =>
-									item.customer.meta_data?.organizationId === org.id,
+								(item) => item.customer.meta_data?.organizationId === org.id,
 							)?.customer;
 
 							if (!chargebeeCustomer) {
 								// Get custom params
-								let extraCreateParams: any = {};
+								let extraCreateParams: Record<string, unknown> = {};
 								if (options.organization?.getCustomerCreateParams) {
 									extraCreateParams =
 										await options.organization.getCustomerCreateParams(
@@ -232,8 +243,8 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 							});
 
 							customerId = chargebeeCustomer.id;
-						} catch (e: any) {
-							ctx.context.logger.error(e);
+						} catch (e) {
+							ctx.context.logger.error("Error creating customer", e);
 							throw new APIError("BAD_REQUEST", {
 								message: CHARGEBEE_ERROR_CODES.UNABLE_TO_CREATE_CUSTOMER,
 							});
@@ -250,10 +261,10 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 						// Search for existing customer by email
 						const customerList = await cb.customer.list({
 							limit: 1,
-						} as any);
+						});
 
 						let chargebeeCustomer = customerList?.list?.find(
-							(item: any) =>
+							(item) =>
 								item.customer.email === user.email &&
 								item.customer.meta_data?.customerType !== "organization",
 						)?.customer;
@@ -279,8 +290,8 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 						});
 
 						customerId = chargebeeCustomer.id;
-					} catch (e: any) {
-						ctx.context.logger.error(e);
+					} catch (e) {
+						ctx.context.logger.error("Error creating customer", e);
 						throw new APIError("BAD_REQUEST", {
 							message: CHARGEBEE_ERROR_CODES.UNABLE_TO_CREATE_CUSTOMER,
 						});
@@ -303,18 +314,18 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 			// Get active Chargebee subscriptions
 			const chargebeeSubsList = await cb.subscription.list({
 				limit: 100,
-			} as any);
+			});
 
 			// Filter subscriptions by customer ID and status
 			const activeSubscriptions =
 				chargebeeSubsList?.list
 					?.filter(
-						(item: any) =>
+						(item) =>
 							item.subscription.customer_id === customerId &&
 							(item.subscription.status === "active" ||
 								item.subscription.status === "in_trial"),
 					)
-					.map((item: any) => item.subscription) || [];
+					.map((item) => item.subscription) || [];
 
 			const activeSubscription = activeSubscriptions.find((sub) => {
 				// Match specific subscription if provided
@@ -344,7 +355,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 			// Check if already subscribed to same item prices
 			const currentItemPriceIds =
 				activeSubscription?.subscription_items?.map(
-					(item: any) => item.item_price_id,
+					(item) => item.item_price_id,
 				) || [];
 
 			const isSameItemPrices =
@@ -438,7 +449,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 			// Get custom params
 			const params = ctx.request
 				? await subscriptionOptions.getHostedPageParams?.(
-						{ user, session, plan: undefined as any, subscription },
+						{ user, session, plan: undefined, subscription },
 						ctx.request,
 						ctx,
 					)
@@ -462,7 +473,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 			const hasActiveSubscription = activeSubscription && activeSubscription.id;
 
 			try {
-				let result;
+				let result: { hosted_page: { url: string; id: string } };
 
 				if (hasActiveSubscription) {
 					// Upgrade existing subscription using checkoutExistingForItems
@@ -470,7 +481,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 						`Upgrading existing subscription ${activeSubscription.id}`,
 					);
 
-					const existingSubParams: any = {
+					const existingSubParams: Record<string, unknown> = {
 						subscription: {
 							id: activeSubscription.id,
 							// Note: Trials cannot be set on existing subscriptions during upgrades
@@ -495,7 +506,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 					// Create new subscription using checkoutNewForItems
 					ctx.context.logger.info("Creating new subscription via hosted page");
 
-					const newSubParams: any = {
+					const newSubParams: Record<string, unknown> = {
 						subscription_items: itemPriceIds.map((id: string) => ({
 							item_price_id: id,
 							quantity: ctx.body.seats || 1,
@@ -523,10 +534,11 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 					id: result.hosted_page.id,
 					redirect: !ctx.body.disableRedirect,
 				});
-			} catch (e: any) {
+			} catch (e) {
+				const error = e as { message?: string; api_error_code?: string };
 				throw ctx.error("BAD_REQUEST", {
-					message: e.message,
-					code: e.api_error_code,
+					message: error.message || "An error occurred",
+					code: error.api_error_code,
 				});
 			}
 		},
@@ -630,7 +642,7 @@ export function cancelSubscriptionCallback(options: ChargebeeOptions) {
 								await subscriptionOptions.onSubscriptionDeleted?.({
 									subscription: {
 										...subscription,
-										status: chargebeeSub.status as any,
+										status: chargebeeSub.status as SubscriptionStatus,
 										canceledAt: chargebeeSub.cancelled_at
 											? new Date(chargebeeSub.cancelled_at * 1000)
 											: new Date(),
@@ -729,18 +741,18 @@ export function cancelSubscription(options: ChargebeeOptions) {
 			// Get active subscriptions from Chargebee
 			const chargebeeSubsList = await cb.subscription.list({
 				limit: 100,
-			} as any);
+			});
 
 			const activeSubscriptions =
 				chargebeeSubsList?.list
 					?.filter(
-						(item: any) =>
+						(item) =>
 							item.subscription.customer_id ===
 								subscription.chargebeeCustomerId &&
 							(item.subscription.status === "active" ||
 								item.subscription.status === "in_trial"),
 					)
-					.map((item: any) => item.subscription) || [];
+					.map((item) => item.subscription) || [];
 
 			if (!activeSubscriptions.length) {
 				// No active subscriptions found in Chargebee, delete from DB
@@ -759,7 +771,7 @@ export function cancelSubscription(options: ChargebeeOptions) {
 			}
 
 			const activeSubscription = activeSubscriptions.find(
-				(sub: any) => sub.id === subscription.chargebeeSubscriptionId,
+				(sub) => sub.id === subscription.chargebeeSubscriptionId,
 			);
 
 			if (!activeSubscription) {
@@ -784,9 +796,13 @@ export function cancelSubscription(options: ChargebeeOptions) {
 					url: portalSession.portal_session.access_url,
 					redirect: !ctx.body.disableRedirect,
 				});
-			} catch (e: any) {
+			} catch (e) {
+				const error = e as { message?: string; api_error_code?: string };
 				// Check if subscription is already cancelled
-				if (e.message?.includes("already") || e.message?.includes("cancel")) {
+				if (
+					error.message?.includes("already") ||
+					error.message?.includes("cancel")
+				) {
 					// Sync state from Chargebee
 					if (!isPendingCancel(subscription)) {
 						try {
@@ -819,8 +835,8 @@ export function cancelSubscription(options: ChargebeeOptions) {
 				}
 
 				throw ctx.error("BAD_REQUEST", {
-					message: e.message,
-					code: e.api_error_code,
+					message: error.message || "An error occurred",
+					code: error.api_error_code,
 				});
 			}
 		},

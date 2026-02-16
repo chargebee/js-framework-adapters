@@ -1,15 +1,30 @@
-import type Chargebee from "chargebee";
 import type { WebhookEvent, WebhookEventType } from "chargebee";
 import { basicAuthValidator, WebhookAuthenticationError } from "chargebee";
-import type { ChargebeeOptions, SubscriptionOptions } from "./types";
+import type {
+	ChargebeeOptions,
+	Logger,
+	Subscription,
+	SubscriptionOptions,
+} from "./types";
 
 /**
  * Context object that wraps better-auth context for webhook handlers
  */
 interface BetterAuthWebhookContext {
-	context: any;
-	adapter: any;
-	logger: any;
+	context: Record<string, unknown>;
+	adapter: {
+		findOne: <T = unknown>(params: unknown) => Promise<T | null>;
+		findMany: <T = unknown>(params: unknown) => Promise<T[]>;
+		update: (params: unknown) => Promise<unknown>;
+		deleteMany: (params: unknown) => Promise<void>;
+		create: (params: unknown) => Promise<unknown>;
+	};
+	logger: Logger;
+}
+
+interface WebhookResponse {
+	status(code: number): WebhookResponse;
+	send(body: string): void;
 }
 
 /**
@@ -25,7 +40,7 @@ export function createWebhookHandler(
 	const cb = options.chargebeeClient;
 
 	// Create handler with optional Basic Auth using Chargebee's validator
-	const handler = (cb as Chargebee).webhooks.createHandler({
+	const handler = cb.webhooks.createHandler({
 		requestValidator:
 			options.webhookUsername && options.webhookPassword
 				? basicAuthValidator((username, password) => {
@@ -40,78 +55,79 @@ export function createWebhookHandler(
 	/**
 	 * Handle subscription events (created, activated, changed, renewed)
 	 */
-	handler.on("subscription_created", async ({ event, response }: any) => {
+	handler.on("subscription_created", async ({ event, response }) => {
 		await handleSubscriptionEvent(event, ctx, options);
-		response?.status(200).send("OK");
+		(response as WebhookResponse | undefined)?.status(200).send("OK");
 	});
 
-	handler.on("subscription_activated", async ({ event, response }: any) => {
+	handler.on("subscription_activated", async ({ event, response }) => {
 		await handleSubscriptionEvent(event, ctx, options);
-		response?.status(200).send("OK");
+		(response as WebhookResponse | undefined)?.status(200).send("OK");
 	});
 
-	handler.on("subscription_changed", async ({ event, response }: any) => {
+	handler.on("subscription_changed", async ({ event, response }) => {
 		await handleSubscriptionEvent(event, ctx, options);
-		response?.status(200).send("OK");
+		(response as WebhookResponse | undefined)?.status(200).send("OK");
 	});
 
-	handler.on("subscription_renewed", async ({ event, response }: any) => {
+	handler.on("subscription_renewed", async ({ event, response }) => {
 		await handleSubscriptionEvent(event, ctx, options);
-		response?.status(200).send("OK");
+		(response as WebhookResponse | undefined)?.status(200).send("OK");
 	});
 
-	handler.on("subscription_started", async ({ event, response }: any) => {
+	handler.on("subscription_started", async ({ event, response }) => {
 		await handleSubscriptionEvent(event, ctx, options);
-		response?.status(200).send("OK");
+		(response as WebhookResponse | undefined)?.status(200).send("OK");
 	});
 
 	/**
 	 * Handle subscription cancellation events
 	 */
-	handler.on("subscription_cancelled", async ({ event, response }: any) => {
+	handler.on("subscription_cancelled", async ({ event, response }) => {
 		await handleSubscriptionCancellation(event, ctx, options);
-		response?.status(200).send("OK");
+		(response as WebhookResponse | undefined)?.status(200).send("OK");
 	});
 
 	handler.on(
 		"subscription_cancellation_scheduled",
-		async ({ event, response }: any) => {
+		async ({ event, response }) => {
 			await handleSubscriptionCancellation(event, ctx, options);
-			response?.status(200).send("OK");
+			(response as WebhookResponse | undefined)?.status(200).send("OK");
 		},
 	);
 
 	/**
 	 * Handle customer deletion events
 	 */
-	handler.on("customer_deleted", async ({ event, response }: any) => {
+	handler.on("customer_deleted", async ({ event, response }) => {
 		await handleCustomerDeletion(event, ctx, options);
-		response?.status(200).send("OK");
+		(response as WebhookResponse | undefined)?.status(200).send("OK");
 	});
 
 	/**
 	 * Handle unhandled events
 	 */
-	handler.on("unhandled_event", async ({ event, response }: any) => {
+	handler.on("unhandled_event", async ({ event, response }) => {
 		ctx.logger.info(`Unhandled Chargebee webhook event: ${event.event_type}`);
-		response?.status(200).send("OK");
+		(response as WebhookResponse | undefined)?.status(200).send("OK");
 	});
 
 	/**
 	 * Handle errors
 	 */
-	handler.on("error", (error: Error, { response }: any) => {
+	handler.on("error", (error: Error, { response }) => {
+		const webhookResponse = response as WebhookResponse | undefined;
 		if (error instanceof WebhookAuthenticationError) {
 			ctx.logger.warn(
 				`Webhook rejected: ${error.message}. Please verify webhookUsername and webhookPassword are correctly configured in your plugin options and that the webhook in Chargebee dashboard has matching Basic Auth credentials.`,
 			);
-			response?.status(401).send("Unauthorized");
+			webhookResponse?.status(401).send("Unauthorized");
 			return;
 		}
 
 		// Log other errors and send 200 to prevent Chargebee retries
 		ctx.logger.error("Error processing webhook event:", error);
-		response?.status(200).send("OK");
+		webhookResponse?.status(200).send("OK");
 	});
 
 	return handler;
@@ -147,7 +163,7 @@ async function handleSubscriptionEvent(
 	);
 
 	// Find the subscription in our database by Chargebee subscription ID
-	let dbSubscription = await ctx.adapter.findOne({
+	let dbSubscription = await ctx.adapter.findOne<Subscription>({
 		model: "subscription",
 		where: [
 			{
@@ -162,7 +178,7 @@ async function handleSubscriptionEvent(
 		ctx.logger.info(
 			`Looking for subscription by ID: ${subscription.meta_data.subscriptionId}`,
 		);
-		dbSubscription = await ctx.adapter.findOne({
+		dbSubscription = await ctx.adapter.findOne<Subscription>({
 			model: "subscription",
 			where: [
 				{
@@ -184,7 +200,7 @@ async function handleSubscriptionEvent(
 		ctx.logger.info(
 			`Looking for subscription by customer metadata: ${customer.meta_data.pendingSubscriptionId}`,
 		);
-		dbSubscription = await ctx.adapter.findOne({
+		dbSubscription = await ctx.adapter.findOne<Subscription>({
 			model: "subscription",
 			where: [
 				{
@@ -297,7 +313,7 @@ async function handleSubscriptionCancellation(
 		return;
 	}
 
-	const dbSubscription = await ctx.adapter.findOne({
+	const dbSubscription = await ctx.adapter.findOne<Subscription>({
 		model: "subscription",
 		where: [
 			{
@@ -332,11 +348,11 @@ async function handleSubscriptionCancellation(
 	await subscriptionOptions?.onSubscriptionDeleted?.({
 		subscription: {
 			...dbSubscription,
-			status: "cancelled",
+			status: "cancelled" as const,
 			canceledAt: subscription.cancelled_at
 				? new Date(subscription.cancelled_at * 1000)
 				: new Date(),
-		},
+		} as Subscription,
 	});
 
 	ctx.logger.info(`Subscription ${dbSubscription.id} cancelled successfully`);
@@ -359,7 +375,7 @@ async function handleCustomerDeletion(
 	}
 
 	// Delete all subscriptions for this customer
-	const subscriptions = await ctx.adapter.findMany({
+	const subscriptions = await ctx.adapter.findMany<Subscription>({
 		model: "subscription",
 		where: [
 			{
@@ -419,7 +435,7 @@ async function handleCustomerDeletion(
 	// This handles cases where metadata is missing or incorrect
 	try {
 		// Try to find and clear user
-		const users = await ctx.adapter.findMany({
+		const users = await ctx.adapter.findMany<{ id: string }>({
 			model: "user",
 			where: [
 				{
@@ -446,7 +462,7 @@ async function handleCustomerDeletion(
 	// Try to clear organizations (if enabled)
 	if (_options.organization?.enabled) {
 		try {
-			const organizations = await ctx.adapter.findMany({
+			const organizations = await ctx.adapter.findMany<{ id: string }>({
 				model: "organization",
 				where: [
 					{

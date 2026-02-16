@@ -1,4 +1,5 @@
 import type { BetterAuthClientPlugin } from "better-auth/client";
+import type Chargebee from "chargebee";
 import { CHARGEBEE_ERROR_CODES } from "./error-codes";
 import type { chargebee } from "./index";
 
@@ -15,7 +16,7 @@ export const chargebeeClient = <
 			typeof chargebee<
 				O["subscription"] extends true
 					? {
-							chargebeeClient: any;
+							chargebeeClient: InstanceType<typeof Chargebee>;
 							webhookUsername?: string;
 							webhookPassword?: string;
 							subscription: {
@@ -24,7 +25,7 @@ export const chargebeeClient = <
 							};
 						}
 					: {
-							chargebeeClient: any;
+							chargebeeClient: InstanceType<typeof Chargebee>;
 							webhookUsername?: string;
 							webhookPassword?: string;
 						}

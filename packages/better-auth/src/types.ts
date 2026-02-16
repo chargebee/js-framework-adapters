@@ -1,6 +1,9 @@
 import type { Session, User } from "better-auth";
 import type Chargebee from "chargebee";
-import type { Customer } from "chargebee";
+import type {
+	Subscription as ChargebeeSubscription,
+	Customer,
+} from "chargebee";
 
 export interface ChargebeePlan {
 	name: string;
@@ -52,6 +55,64 @@ export type ChargebeeCtxSession = {
 	user: User & WithChargebeeCustomerId;
 };
 
+export interface Logger {
+	info: (message: string, ...args: unknown[]) => void;
+	warn: (message: string, ...args: unknown[]) => void;
+	error: (message: string, ...args: unknown[]) => void;
+	debug?: (message: string, ...args: unknown[]) => void;
+}
+
+// Minimal adapter interface - only what we need for our webhook handlers
+export interface MinimalAdapter {
+	findOne: <T = unknown>(params: unknown) => Promise<T | null>;
+	findMany: <T = unknown>(params: unknown) => Promise<T[]>;
+	create: <T = unknown>(params: unknown) => Promise<T>;
+	update: <T = unknown>(params: unknown) => Promise<T | null>;
+	deleteMany: (params: unknown) => Promise<void>;
+}
+
+// Minimal context interface - only what we need for our webhook handlers
+export interface MinimalContext {
+	baseURL?: string;
+	adapter?: MinimalAdapter;
+	logger?: Logger;
+	[key: string]: unknown;
+}
+
+export interface SubscriptionEventParams {
+	subscription: Subscription;
+	chargebeeSubscription?: ChargebeeSubscription;
+}
+
+export interface CustomerCreateParams {
+	chargebeeCustomer: Customer;
+	user: User & WithChargebeeCustomerId;
+}
+
+export interface OrganizationCustomerCreateParams {
+	chargebeeCustomer: Customer;
+	organization: Organization & WithChargebeeCustomerId;
+}
+
+export interface Organization {
+	id: string;
+	name: string;
+	slug?: string;
+	logo?: string | null;
+	metadata?: string | null;
+	createdAt: Date;
+}
+
+// Simplified endpoint context interface that's compatible with better-auth's actual endpoint context
+export interface BetterAuthEndpointContext {
+	context: MinimalContext;
+	body?: Record<string, unknown>;
+	query?: Record<string, unknown>;
+	request?: Request;
+	session?: ChargebeeCtxSession;
+	[key: string]: unknown;
+}
+
 export type SubscriptionOptions = {
 	enabled: boolean;
 	plans: ChargebeePlan[] | (() => Promise<ChargebeePlan[]>);
@@ -59,60 +120,79 @@ export type SubscriptionOptions = {
 	requireEmailVerification?: boolean;
 
 	// subscription lifecycle
-	onSubscriptionComplete?: (params: any) => Promise<void> | void;
-	onSubscriptionCreated?: (params: any) => Promise<void> | void;
-	onSubscriptionUpdate?: (params: any) => Promise<void> | void;
-	onSubscriptionDeleted?: (params: any) => Promise<void> | void;
-	onTrialStart?: (params: any) => Promise<void> | void;
-	onTrialEnd?: (params: any) => Promise<void> | void;
+	onSubscriptionComplete?: (
+		params: SubscriptionEventParams,
+	) => Promise<void> | void;
+	onSubscriptionCreated?: (
+		params: SubscriptionEventParams,
+	) => Promise<void> | void;
+	onSubscriptionUpdate?: (
+		params: SubscriptionEventParams,
+	) => Promise<void> | void;
+	onSubscriptionDeleted?: (
+		params: SubscriptionEventParams,
+	) => Promise<void> | void;
+	onTrialStart?: (params: SubscriptionEventParams) => Promise<void> | void;
+	onTrialEnd?: (params: SubscriptionEventParams) => Promise<void> | void;
 
 	// hostedPages
 	getHostedPageParams?: (
 		params: {
-			user: any;
-			session: any;
-			plan: ChargebeePlan;
+			user: User & WithChargebeeCustomerId;
+			session: Session & WithActiveOrganizationId;
+			plan: ChargebeePlan | undefined;
 			subscription: Subscription;
 		},
 		request: Request,
-		ctx: any,
-	) => Promise<Record<string, any>>;
+		ctx: Record<string, unknown>,
+	) => Promise<Record<string, unknown>>;
 
 	// Reference authorization
 	authorizeReference?: (
 		params: {
-			user: any;
-			session: any;
+			user: User & WithChargebeeCustomerId;
+			session: Session & WithActiveOrganizationId;
 			referenceId: string;
 			action: AuthorizeReferenceAction;
 		},
-		ctx: any,
+		ctx: Record<string, unknown>,
 	) => Promise<boolean>;
 };
+
+export interface WebhookEvent {
+	event_type: string;
+	content: Record<string, unknown>;
+	[key: string]: unknown;
+}
+
+export interface ChargebeeCustomerCreateParams {
+	email?: string;
+	first_name?: string;
+	last_name?: string;
+	company?: string;
+	phone?: string;
+	billing_address?: Record<string, unknown>;
+	meta_data?: Record<string, unknown>;
+	[key: string]: unknown;
+}
 
 export interface ChargebeeOptions {
 	chargebeeClient: InstanceType<typeof Chargebee>;
 	webhookUsername?: string;
 	webhookPassword?: string;
 	createCustomerOnSignUp?: boolean;
-	onCustomerCreate?: (params: {
-		chargebeeCustomer: Customer;
-		user: any;
-	}) => Promise<void> | void;
-	onEvent?: (event: any) => Promise<void> | void;
+	onCustomerCreate?: (params: CustomerCreateParams) => Promise<void> | void;
+	onEvent?: (event: WebhookEvent) => Promise<void> | void;
 	subscription?: SubscriptionOptions;
 	organization?: {
 		enabled: boolean;
 		getCustomerCreateParams?: (
-			organization: any,
-			ctx: any,
-		) => Promise<Partial<any>>;
+			organization: Organization & WithChargebeeCustomerId,
+			ctx: Record<string, unknown>,
+		) => Promise<Partial<ChargebeeCustomerCreateParams>>;
 		onCustomerCreate?: (
-			params: {
-				chargebeeCustomer: Customer;
-				organization: any;
-			},
-			ctx: any,
+			params: OrganizationCustomerCreateParams,
+			ctx: Record<string, unknown>,
 		) => Promise<void> | void;
 	};
 }

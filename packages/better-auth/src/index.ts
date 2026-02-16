@@ -42,14 +42,18 @@ export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 							create: {
 								async after(user) {
 									if (!options.createCustomerOnSignUp) return;
-									const existing: any = await cb.customer.list({
+									const existing = await cb.customer.list({
 										email: { is: user.email },
 										limit: 1,
 									});
 
 									let chargebeeCustomer: Customer;
 
-									if (existing.list && existing.list.length > 0) {
+									if (
+										existing.list &&
+										existing.list.length > 0 &&
+										existing.list[0]
+									) {
 										chargebeeCustomer = existing.list[0].customer;
 									} else {
 										const result = await cb.customer.create({
@@ -92,7 +96,10 @@ export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 								// Clean up user's subscriptions before deleting user
 								try {
 									// Find all subscriptions for this user
-									const subscriptions = await ctx.adapter.findMany({
+									const subscriptions = await ctx.adapter.findMany<{
+										id: string;
+										chargebeeSubscriptionId: string | null;
+									}>({
 										model: "subscription",
 										where: [
 											{
@@ -103,7 +110,7 @@ export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 									});
 
 									// Cancel and delete each subscription
-									for (const subscription of subscriptions as any[]) {
+									for (const subscription of subscriptions) {
 										// Cancel in Chargebee first (if subscription exists there)
 										if (subscription.chargebeeSubscriptionId) {
 											try {
@@ -116,10 +123,12 @@ export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 												console.log(
 													`Cancelled Chargebee subscription ${subscription.chargebeeSubscriptionId}`,
 												);
-											} catch (e: any) {
+											} catch (e) {
 												// Log but continue - subscription might already be cancelled
+												const errorMessage =
+													e instanceof Error ? e.message : String(e);
 												console.warn(
-													`Failed to cancel subscription in Chargebee: ${e.message}`,
+													`Failed to cancel subscription in Chargebee: ${errorMessage}`,
 												);
 											}
 										}
