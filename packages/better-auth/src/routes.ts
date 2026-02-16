@@ -473,7 +473,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 			const hasActiveSubscription = activeSubscription && activeSubscription.id;
 
 			try {
-				let result: { hosted_page: { url: string; id: string } };
+				let result: { hosted_page: { url?: string; id?: string } };
 
 				if (hasActiveSubscription) {
 					// Upgrade existing subscription using checkoutExistingForItems
@@ -530,8 +530,8 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 				}
 
 				return ctx.json({
-					url: result.hosted_page.url,
-					id: result.hosted_page.id,
+					url: result.hosted_page.url || "",
+					id: result.hosted_page.id || "",
 					redirect: !ctx.body.disableRedirect,
 				});
 			} catch (e) {
