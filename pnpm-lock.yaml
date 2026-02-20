@@ -31,9 +31,6 @@ importers:
       '@better-auth/utils':
         specifier: 0.3.0
         version: 0.3.0
-      chargebee:
-        specifier: 3.21.0
-        version: 3.21.0
       defu:
         specifier: ^6.1.4
         version: 6.1.4
@@ -56,6 +53,9 @@ importers:
       better-sqlite3:
         specifier: ^12.0.0
         version: 12.6.2
+      chargebee:
+        specifier: ^3.21.0
+        version: 3.21.0
       tsdown:
         specifier: ^0.20.1
         version: 0.20.3(typescript@5.9.2)
