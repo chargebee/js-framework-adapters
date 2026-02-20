@@ -57,14 +57,14 @@
   },
   "dependencies": {
     "@better-auth/utils": "0.3.0",
-    "chargebee": "3.21.0",
     "defu": "^6.1.4",
     "zod": "^4.3.6"
   },
   "peerDependencies": {
     "@better-auth/core": "^1.4.18",
     "better-auth": "^1.4.0",
-    "better-call": "^1.1.7"
+    "better-call": "^1.1.7",
+    "chargebee": "^3.21.0"
   },
   "devDependencies": {
     "@better-auth/core": "^1.4.18",
@@ -74,6 +74,7 @@
     "better-sqlite3": "^12.0.0",
     "tsdown": "^0.20.1",
     "typescript": "^5.7.3",
-    "vitest": "^4.0.18"
+    "vitest": "^4.0.18",
+    "chargebee": "^3.21.0"
   }
 }
