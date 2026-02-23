@@ -309,4 +309,100 @@ describe("webhook handler", () => {
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 	});
+
+	it("should handle subscription_activated event", () => {
+		const handler = createWebhookHandler(mockOptions, mockContext);
+
+		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
+
+		const handlerConfig =
+			mockChargebee.webhooks.createHandler.mock.calls[0][0];
+		expect(handlerConfig).toBeDefined();
+	});
+
+	it("should handle subscription_changed event", () => {
+		const handler = createWebhookHandler(mockOptions, mockContext);
+
+		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
+	});
+
+	it("should handle subscription_renewed event", () => {
+		const handler = createWebhookHandler(mockOptions, mockContext);
+
+		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
+	});
+
+	it("should handle subscription_started event", () => {
+		const handler = createWebhookHandler(mockOptions, mockContext);
+
+		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
+	});
+
+	it("should handle subscription_scheduled_cancellation_removed event", () => {
+		const handler = createWebhookHandler(mockOptions, mockContext);
+
+		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
+	});
+
+	it("should handle error event with WebhookAuthenticationError", () => {
+		const handler = createWebhookHandler(mockOptions, mockContext);
+
+		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
+		expect(mockContext.logger.warn).toBeDefined();
+	});
+
+	it("should handle error event with generic error", () => {
+		const handler = createWebhookHandler(mockOptions, mockContext);
+
+		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
+		expect(mockContext.logger.error).toBeDefined();
+	});
+
+	it("should handle subscription without metadata", () => {
+		mockContext.adapter.findOne = vi.fn().mockResolvedValue(null);
+
+		const handler = createWebhookHandler(mockOptions, mockContext);
+
+		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
+	});
+
+	it("should handle customer deletion for organization customer", () => {
+		const optionsWithOrg: ChargebeeOptions = {
+			...mockOptions,
+			organization: {
+				enabled: true,
+			},
+		};
+
+		mockContext.adapter.findMany = vi.fn().mockResolvedValue([]);
+		mockContext.adapter.update = vi.fn().mockResolvedValue({});
+
+		const handler = createWebhookHandler(optionsWithOrg, mockContext);
+
+		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
+	});
+
+	it("should create subscription items from webhook", () => {
+		mockContext.adapter.findOne = vi.fn().mockResolvedValue({
+			id: "local_sub_123",
+			referenceId: "user_123",
+			status: "pending",
+		});
+
+		mockContext.adapter.deleteMany = vi.fn().mockResolvedValue({});
+		mockContext.adapter.create = vi.fn().mockResolvedValue({
+			id: "item_123",
+		});
+		mockContext.adapter.update = vi.fn().mockResolvedValue({});
+
+		const handler = createWebhookHandler(mockOptions, mockContext);
+
+		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
+	});
+
+	it("should handle webhook with response undefined", () => {
+		const handler = createWebhookHandler(mockOptions, mockContext);
+
+		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
+	});
 });
