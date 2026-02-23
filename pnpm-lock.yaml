@@ -51,8 +51,8 @@ importers:
         specifier: ^12.0.0
         version: 12.6.2
       chargebee:
-        specifier: link:/Users/alishsapkota/work/chargebee-node
-        version: link:../../../chargebee-node
+        specifier: ^3.21.1
+        version: 3.21.1
       tsdown:
         specifier: ^0.20.1
         version: 0.20.3(typescript@5.9.2)
@@ -1069,6 +1069,10 @@ packages:
 
   chargebee@3.10.0:
     resolution: {integrity: sha512-Rny1w8cRXMfGbV4vxpGcsz9RsdLhUtrdpTisQASgqoZW0C3Ff4KVi2wCOEltc+536cqMqDml57s0X9bQRoDVVQ==}
+    engines: {node: '>=18.*'}
+
+  chargebee@3.21.1:
+    resolution: {integrity: sha512-2xpAlRGzq09IUhxgdzUX8AdLE7mW0YYgsdvTbUefS7+RWoJ56xzaPPL6FOOtaPMaDdmTI+BUOKKdcizBY8YZUw==}
     engines: {node: '>=18.*'}
 
   chownr@1.1.4:
@@ -2547,6 +2551,8 @@ snapshots:
   chai@6.2.2: {}
 
   chargebee@3.10.0: {}
+
+  chargebee@3.21.1: {}
 
   chownr@1.1.4: {}
 
