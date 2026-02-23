@@ -1,5 +1,9 @@
-import type { WebhookEvent, WebhookEventType } from "chargebee";
-import { basicAuthValidator, WebhookAuthenticationError } from "chargebee";
+import {
+	basicAuthValidator,
+	WebhookAuthenticationError,
+	type WebhookEvent,
+	WebhookEventType,
+} from "chargebee";
 import type {
 	ChargebeeOptions,
 	Logger,
@@ -55,41 +59,59 @@ export function createWebhookHandler(
 	/**
 	 * Handle subscription events (created, activated, changed, renewed)
 	 */
-	handler.on("subscription_created", async ({ event, response }) => {
-		await handleSubscriptionEvent(event, ctx, options);
-		(response as WebhookResponse | undefined)?.status(200).send("OK");
-	});
+	handler.on(
+		WebhookEventType.SubscriptionCreated,
+		async ({ event, response }) => {
+			await handleSubscriptionEvent(event, ctx, options);
+			(response as WebhookResponse | undefined)?.status(200).send("OK");
+		},
+	);
 
-	handler.on("subscription_activated", async ({ event, response }) => {
-		await handleSubscriptionEvent(event, ctx, options);
-		(response as WebhookResponse | undefined)?.status(200).send("OK");
-	});
+	handler.on(
+		WebhookEventType.SubscriptionActivated,
+		async ({ event, response }) => {
+			await handleSubscriptionEvent(event, ctx, options);
+			(response as WebhookResponse | undefined)?.status(200).send("OK");
+		},
+	);
 
-	handler.on("subscription_changed", async ({ event, response }) => {
-		await handleSubscriptionEvent(event, ctx, options);
-		(response as WebhookResponse | undefined)?.status(200).send("OK");
-	});
+	handler.on(
+		WebhookEventType.SubscriptionChanged,
+		async ({ event, response }) => {
+			await handleSubscriptionEvent(event, ctx, options);
+			(response as WebhookResponse | undefined)?.status(200).send("OK");
+		},
+	);
 
-	handler.on("subscription_renewed", async ({ event, response }) => {
-		await handleSubscriptionEvent(event, ctx, options);
-		(response as WebhookResponse | undefined)?.status(200).send("OK");
-	});
+	handler.on(
+		WebhookEventType.SubscriptionRenewed,
+		async ({ event, response }) => {
+			await handleSubscriptionEvent(event, ctx, options);
+			(response as WebhookResponse | undefined)?.status(200).send("OK");
+		},
+	);
 
-	handler.on("subscription_started", async ({ event, response }) => {
-		await handleSubscriptionEvent(event, ctx, options);
-		(response as WebhookResponse | undefined)?.status(200).send("OK");
-	});
+	handler.on(
+		WebhookEventType.SubscriptionStarted,
+		async ({ event, response }) => {
+			await handleSubscriptionEvent(event, ctx, options);
+			(response as WebhookResponse | undefined)?.status(200).send("OK");
+		},
+	);
 
 	/**
 	 * Handle subscription cancellation events
 	 */
-	handler.on("subscription_cancelled", async ({ event, response }) => {
-		await handleSubscriptionCancellation(event, ctx, options);
-		(response as WebhookResponse | undefined)?.status(200).send("OK");
-	});
+	handler.on(
+		WebhookEventType.SubscriptionCancelled,
+		async ({ event, response }) => {
+			await handleSubscriptionCancellation(event, ctx, options);
+			(response as WebhookResponse | undefined)?.status(200).send("OK");
+		},
+	);
 
 	handler.on(
-		"subscription_cancellation_scheduled",
+		WebhookEventType.SubscriptionScheduledCancellationRemoved,
 		async ({ event, response }) => {
 			await handleSubscriptionCancellation(event, ctx, options);
 			(response as WebhookResponse | undefined)?.status(200).send("OK");
@@ -99,7 +121,7 @@ export function createWebhookHandler(
 	/**
 	 * Handle customer deletion events
 	 */
-	handler.on("customer_deleted", async ({ event, response }) => {
+	handler.on(WebhookEventType.CustomerDeleted, async ({ event, response }) => {
 		await handleCustomerDeletion(event, ctx, options);
 		(response as WebhookResponse | undefined)?.status(200).send("OK");
 	});
