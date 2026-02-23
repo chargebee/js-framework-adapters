@@ -43,40 +43,48 @@ export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 							create: {
 								async after(user) {
 									if (!options.createCustomerOnSignUp) return;
-									const existing = await cb.customer.list({
-										email: { is: user.email },
-										limit: 1,
-									});
-
-									let chargebeeCustomer: Customer;
-
-									if (
-										existing.list &&
-										existing.list.length > 0 &&
-										existing.list[0]
-									) {
-										chargebeeCustomer = existing.list[0].customer;
-									} else {
-										const result = await cb.customer.create({
-											email: user.email,
-											first_name: user.name?.split(" ")[0],
-											last_name: user.name?.split(" ").slice(1).join(" "),
-											meta_data: customerMetadata.set(undefined, {
-												userId: user.id,
-												customerType: "user",
-											}),
+									try {
+										const existing = await cb.customer.list({
+											email: { is: user.email },
+											limit: 1,
 										});
-										chargebeeCustomer = result.customer;
+
+										let chargebeeCustomer: Customer;
+
+										if (
+											existing.list &&
+											existing.list.length > 0 &&
+											existing.list[0]
+										) {
+											chargebeeCustomer = existing.list[0].customer;
+										} else {
+											const result = await cb.customer.create({
+												email: user.email,
+												first_name: user.name?.split(" ")[0],
+												last_name: user.name?.split(" ").slice(1).join(" "),
+												meta_data: customerMetadata.set(undefined, {
+													userId: user.id,
+													customerType: "user",
+												}),
+											});
+											chargebeeCustomer = result.customer;
+										}
+
+										await ctx.internalAdapter.updateUser(user.id, {
+											chargebeeCustomerId: chargebeeCustomer.id,
+										});
+
+										await options.onCustomerCreate?.({
+											chargebeeCustomer,
+											user,
+										});
+									} catch (e) {
+										ctx.logger.error(
+											`Error creating Chargebee customer for user ${user.id}:`,
+											e,
+										);
+										// Silently fail — don't break user signup for billing sync issues
 									}
-
-									await ctx.internalAdapter.updateUser(user.id, {
-										chargebeeCustomerId: chargebeeCustomer.id,
-									});
-
-									await options.onCustomerCreate?.({
-										chargebeeCustomer,
-										user,
-									});
 								},
 							},
 							update: {
