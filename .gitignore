@@ -3,3 +3,8 @@ dist
 .DS_Store
 .pnpm
 tsconfig.tsbuildinfo
+
+# Test artifacts
+coverage
+.nyc_output
+*.lcov
