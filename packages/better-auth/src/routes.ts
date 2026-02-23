@@ -12,7 +12,6 @@ import type {
 	ChargebeeOptions,
 	Subscription,
 	SubscriptionOptions,
-	SubscriptionStatus,
 	WithChargebeeCustomerId,
 } from "./types";
 import {
@@ -642,7 +641,7 @@ export function cancelSubscriptionCallback(options: ChargebeeOptions) {
 								await subscriptionOptions.onSubscriptionDeleted?.({
 									subscription: {
 										...subscription,
-										status: chargebeeSub.status as SubscriptionStatus,
+										status: chargebeeSub.status,
 										canceledAt: chargebeeSub.cancelled_at
 											? new Date(chargebeeSub.cancelled_at * 1000)
 											: new Date(),

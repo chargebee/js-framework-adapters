@@ -1,4 +1,5 @@
 import type { Session, User } from "better-auth";
+import type { Organization } from "better-auth/plugins/organization";
 import type Chargebee from "chargebee";
 import type {
 	Subscription as ChargebeeSubscription,
@@ -28,14 +29,8 @@ export interface ChargebeePlan {
 
 export type SubscriptionItemType = "plan" | "addon" | "charge";
 
-export type SubscriptionStatus =
-	| "future"
-	| "in_trial"
-	| "active"
-	| "non_renewing"
-	| "paused"
-	| "cancelled"
-	| "transferred";
+// Use native Chargebee subscription status type
+export type SubscriptionStatus = ChargebeeSubscription["status"];
 
 export type CustomerType = "user" | "organization";
 
@@ -55,28 +50,12 @@ export type ChargebeeCtxSession = {
 	user: User & WithChargebeeCustomerId;
 };
 
+// Custom logger interface - Better Auth's logger has similar structure
 export interface Logger {
 	info: (message: string, ...args: unknown[]) => void;
 	warn: (message: string, ...args: unknown[]) => void;
 	error: (message: string, ...args: unknown[]) => void;
 	debug?: (message: string, ...args: unknown[]) => void;
-}
-
-// Minimal adapter interface - only what we need for our webhook handlers
-export interface MinimalAdapter {
-	findOne: <T = unknown>(params: unknown) => Promise<T | null>;
-	findMany: <T = unknown>(params: unknown) => Promise<T[]>;
-	create: <T = unknown>(params: unknown) => Promise<T>;
-	update: <T = unknown>(params: unknown) => Promise<T | null>;
-	deleteMany: (params: unknown) => Promise<void>;
-}
-
-// Minimal context interface - only what we need for our webhook handlers
-export interface MinimalContext {
-	baseURL?: string;
-	adapter?: MinimalAdapter;
-	logger?: Logger;
-	[key: string]: unknown;
 }
 
 export interface SubscriptionEventParams {
@@ -92,25 +71,6 @@ export interface CustomerCreateParams {
 export interface OrganizationCustomerCreateParams {
 	chargebeeCustomer: Customer;
 	organization: Organization & WithChargebeeCustomerId;
-}
-
-export interface Organization {
-	id: string;
-	name: string;
-	slug?: string;
-	logo?: string | null;
-	metadata?: string | null;
-	createdAt: Date;
-}
-
-// Simplified endpoint context interface that's compatible with better-auth's actual endpoint context
-export interface BetterAuthEndpointContext {
-	context: MinimalContext;
-	body?: Record<string, unknown>;
-	query?: Record<string, unknown>;
-	request?: Request;
-	session?: ChargebeeCtxSession;
-	[key: string]: unknown;
 }
 
 export type SubscriptionOptions = {
@@ -165,16 +125,8 @@ export interface WebhookEvent {
 	[key: string]: unknown;
 }
 
-export interface ChargebeeCustomerCreateParams {
-	email?: string;
-	first_name?: string;
-	last_name?: string;
-	company?: string;
-	phone?: string;
-	billing_address?: Record<string, unknown>;
-	meta_data?: Record<string, unknown>;
-	[key: string]: unknown;
-}
+// Use native Chargebee customer creation params
+export type ChargebeeCustomerCreateParams = Partial<Customer.CreateInputParam>;
 
 export interface ChargebeeOptions {
 	chargebeeClient: InstanceType<typeof Chargebee>;

@@ -121,14 +121,14 @@ export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 														end_of_term: false, // Cancel immediately
 													},
 												);
-												console.log(
+												ctx.logger.info(
 													`Cancelled Chargebee subscription ${subscription.chargebeeSubscriptionId}`,
 												);
 											} catch (e) {
 												// Log but continue - subscription might already be cancelled
 												const errorMessage =
 													e instanceof Error ? e.message : String(e);
-												console.warn(
+												ctx.logger.warn(
 													`Failed to cancel subscription in Chargebee: ${errorMessage}`,
 												);
 											}
@@ -157,11 +157,11 @@ export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 										});
 									}
 
-									console.log(
+									ctx.logger.info(
 										`Cleaned up ${subscriptions.length} subscription(s) for user ${user.id}`,
 									);
 								} catch (e) {
-									console.error(
+									ctx.logger.error(
 										`Error cleaning up subscriptions for user ${user.id}:`,
 										e,
 									);
@@ -180,6 +180,8 @@ export type ChargebeePlugin<O extends ChargebeeOptions> = ReturnType<
 	typeof chargebee<O>
 >;
 
+// Re-export native Better Auth types for convenience
+export type { Organization } from "better-auth/plugins/organization";
 export { CHARGEBEE_ERROR_CODES } from "./error-codes";
 export type {
 	ChargebeeOptions,
