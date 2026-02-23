@@ -43,8 +43,7 @@ export function createWebhookHandler(
 ) {
 	const cb = options.chargebeeClient;
 
-	// Create handler with optional Basic Auth using Chargebee's validator
-	const handler = cb.webhooks.createHandler({
+	const handler = cb.webhooks.createHandler<Request, WebhookResponse>({
 		requestValidator:
 			options.webhookUsername && options.webhookPassword
 				? basicAuthValidator((username, password) => {
@@ -63,7 +62,7 @@ export function createWebhookHandler(
 		WebhookEventType.SubscriptionCreated,
 		async ({ event, response }) => {
 			await handleSubscriptionEvent(event, ctx, options);
-			(response as WebhookResponse | undefined)?.status(200).send("OK");
+			response?.status(200).send("OK");
 		},
 	);
 
@@ -71,7 +70,7 @@ export function createWebhookHandler(
 		WebhookEventType.SubscriptionActivated,
 		async ({ event, response }) => {
 			await handleSubscriptionEvent(event, ctx, options);
-			(response as WebhookResponse | undefined)?.status(200).send("OK");
+			response?.status(200).send("OK");
 		},
 	);
 
@@ -79,7 +78,7 @@ export function createWebhookHandler(
 		WebhookEventType.SubscriptionChanged,
 		async ({ event, response }) => {
 			await handleSubscriptionEvent(event, ctx, options);
-			(response as WebhookResponse | undefined)?.status(200).send("OK");
+			response?.status(200).send("OK");
 		},
 	);
 
@@ -87,7 +86,7 @@ export function createWebhookHandler(
 		WebhookEventType.SubscriptionRenewed,
 		async ({ event, response }) => {
 			await handleSubscriptionEvent(event, ctx, options);
-			(response as WebhookResponse | undefined)?.status(200).send("OK");
+			response?.status(200).send("OK");
 		},
 	);
 
@@ -95,7 +94,7 @@ export function createWebhookHandler(
 		WebhookEventType.SubscriptionStarted,
 		async ({ event, response }) => {
 			await handleSubscriptionEvent(event, ctx, options);
-			(response as WebhookResponse | undefined)?.status(200).send("OK");
+			response?.status(200).send("OK");
 		},
 	);
 
@@ -106,7 +105,7 @@ export function createWebhookHandler(
 		WebhookEventType.SubscriptionCancelled,
 		async ({ event, response }) => {
 			await handleSubscriptionCancellation(event, ctx, options);
-			(response as WebhookResponse | undefined)?.status(200).send("OK");
+			response?.status(200).send("OK");
 		},
 	);
 
@@ -114,7 +113,7 @@ export function createWebhookHandler(
 		WebhookEventType.SubscriptionScheduledCancellationRemoved,
 		async ({ event, response }) => {
 			await handleSubscriptionCancellation(event, ctx, options);
-			(response as WebhookResponse | undefined)?.status(200).send("OK");
+			response?.status(200).send("OK");
 		},
 	);
 
@@ -123,7 +122,7 @@ export function createWebhookHandler(
 	 */
 	handler.on(WebhookEventType.CustomerDeleted, async ({ event, response }) => {
 		await handleCustomerDeletion(event, ctx, options);
-		(response as WebhookResponse | undefined)?.status(200).send("OK");
+		response?.status(200).send("OK");
 	});
 
 	/**
@@ -131,7 +130,7 @@ export function createWebhookHandler(
 	 */
 	handler.on("unhandled_event", async ({ event, response }) => {
 		ctx.logger.info(`Unhandled Chargebee webhook event: ${event.event_type}`);
-		(response as WebhookResponse | undefined)?.status(200).send("OK");
+		response?.status(200).send("OK");
 	});
 
 	/**

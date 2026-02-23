@@ -9,6 +9,14 @@ import { CHARGEBEE_ERROR_CODES } from "../src/error-codes";
 import { customerMetadata } from "../src/metadata";
 import type { ChargebeeOptions, Subscription } from "../src/types";
 
+// Mock Chargebee client for tests
+const createMockChargebeeClient = (): Chargebee => {
+	const mock = {
+		__clientIdentifier: () => {},
+	} as unknown as Chargebee;
+	return mock;
+};
+
 describe("chargebee types", () => {
 	it("should have api endpoints", () => {
 		type Plugins = [
@@ -49,7 +57,7 @@ describe("chargebee types", () => {
 		const { auth } = await getTestInstance({
 			plugins: [
 				chargebee({
-					chargebeeClient: {} as Chargebee,
+					chargebeeClient: createMockChargebeeClient(),
 				}),
 			],
 		});
@@ -62,7 +70,7 @@ describe("chargebee types", () => {
 		const { auth } = await getTestInstance({
 			plugins: [
 				chargebee({
-					chargebeeClient: {} as Chargebee,
+					chargebeeClient: createMockChargebeeClient(),
 				}),
 			],
 			user: {
