@@ -1,9 +1,16 @@
+import type { GenericEndpointContext } from "@better-auth/core";
 import {
 	basicAuthValidator,
 	WebhookAuthenticationError,
 	type WebhookEvent,
 	WebhookEventType,
 } from "chargebee";
+import {
+	onSubscriptionComplete,
+	onSubscriptionCreated,
+	onSubscriptionDeleted,
+	onSubscriptionUpdated,
+} from "./hooks";
 import type {
 	ChargebeeOptions,
 	Logger,
@@ -14,7 +21,7 @@ import type {
 /**
  * Context object that wraps better-auth context for webhook handlers
  */
-interface BetterAuthWebhookContext {
+export interface BetterAuthWebhookContext {
 	context: Record<string, unknown>;
 	adapter: {
 		findOne: <T = unknown>(params: unknown) => Promise<T | null>;
@@ -40,6 +47,7 @@ interface WebhookResponse {
 export function createWebhookHandler(
 	options: ChargebeeOptions,
 	ctx: BetterAuthWebhookContext,
+	endpointCtx: GenericEndpointContext,
 ) {
 	const cb = options.chargebeeClient;
 
@@ -61,7 +69,15 @@ export function createWebhookHandler(
 	handler.on(
 		WebhookEventType.SubscriptionCreated,
 		async ({ event, response }) => {
-			await handleSubscriptionEvent(event, ctx, options);
+			const content = event.content;
+			if (content.subscription && content.customer) {
+				await onSubscriptionCreated(
+					endpointCtx,
+					options,
+					content.subscription,
+					content.customer,
+				);
+			}
 			response?.status(200).send("OK");
 		},
 	);
@@ -69,7 +85,15 @@ export function createWebhookHandler(
 	handler.on(
 		WebhookEventType.SubscriptionActivated,
 		async ({ event, response }) => {
-			await handleSubscriptionEvent(event, ctx, options);
+			const content = event.content;
+			if (content.subscription && content.customer) {
+				await onSubscriptionComplete(
+					endpointCtx,
+					options,
+					content.subscription,
+					content.customer,
+				);
+			}
 			response?.status(200).send("OK");
 		},
 	);
@@ -77,7 +101,15 @@ export function createWebhookHandler(
 	handler.on(
 		WebhookEventType.SubscriptionChanged,
 		async ({ event, response }) => {
-			await handleSubscriptionEvent(event, ctx, options);
+			const content = event.content;
+			if (content.subscription && content.customer) {
+				await onSubscriptionUpdated(
+					endpointCtx,
+					options,
+					content.subscription,
+					content.customer,
+				);
+			}
 			response?.status(200).send("OK");
 		},
 	);
@@ -85,7 +117,15 @@ export function createWebhookHandler(
 	handler.on(
 		WebhookEventType.SubscriptionRenewed,
 		async ({ event, response }) => {
-			await handleSubscriptionEvent(event, ctx, options);
+			const content = event.content;
+			if (content.subscription && content.customer) {
+				await onSubscriptionUpdated(
+					endpointCtx,
+					options,
+					content.subscription,
+					content.customer,
+				);
+			}
 			response?.status(200).send("OK");
 		},
 	);
@@ -93,7 +133,15 @@ export function createWebhookHandler(
 	handler.on(
 		WebhookEventType.SubscriptionStarted,
 		async ({ event, response }) => {
-			await handleSubscriptionEvent(event, ctx, options);
+			const content = event.content;
+			if (content.subscription && content.customer) {
+				await onSubscriptionComplete(
+					endpointCtx,
+					options,
+					content.subscription,
+					content.customer,
+				);
+			}
 			response?.status(200).send("OK");
 		},
 	);
@@ -104,7 +152,10 @@ export function createWebhookHandler(
 	handler.on(
 		WebhookEventType.SubscriptionCancelled,
 		async ({ event, response }) => {
-			await handleSubscriptionCancellation(event, ctx, options);
+			const content = event.content;
+			if (content.subscription) {
+				await onSubscriptionDeleted(endpointCtx, options, content.subscription);
+			}
 			response?.status(200).send("OK");
 		},
 	);
@@ -112,7 +163,15 @@ export function createWebhookHandler(
 	handler.on(
 		WebhookEventType.SubscriptionScheduledCancellationRemoved,
 		async ({ event, response }) => {
-			await handleSubscriptionCancellation(event, ctx, options);
+			const content = event.content;
+			if (content.subscription && content.customer) {
+				await onSubscriptionUpdated(
+					endpointCtx,
+					options,
+					content.subscription,
+					content.customer,
+				);
+			}
 			response?.status(200).send("OK");
 		},
 	);
@@ -152,231 +211,6 @@ export function createWebhookHandler(
 	});
 
 	return handler;
-}
-
-/**
- * Handle subscription events (created, activated, changed, renewed)
- * Syncs subscription data and populates subscription items
- */
-async function handleSubscriptionEvent(
-	event:
-		| WebhookEvent<WebhookEventType.SubscriptionCreated>
-		| WebhookEvent<WebhookEventType.SubscriptionActivated>
-		| WebhookEvent<WebhookEventType.SubscriptionChanged>
-		| WebhookEvent<WebhookEventType.SubscriptionRenewed>
-		| WebhookEvent<WebhookEventType.SubscriptionStarted>,
-	ctx: BetterAuthWebhookContext,
-	_options: ChargebeeOptions,
-) {
-	const content = event.content;
-	const subscription = content.subscription;
-	const customer = content.customer;
-
-	if (!subscription || !customer) {
-		ctx.logger.warn("Missing subscription or customer in webhook event");
-		return;
-	}
-
-	// Log the metadata for debugging
-	ctx.logger.info(
-		`Processing subscription ${subscription.id} with metadata:`,
-		subscription.meta_data,
-	);
-
-	// Find the subscription in our database by Chargebee subscription ID
-	let dbSubscription = await ctx.adapter.findOne<Subscription>({
-		model: "subscription",
-		where: [
-			{
-				field: "chargebeeSubscriptionId",
-				value: subscription.id,
-			},
-		],
-	});
-
-	// If not found by Chargebee ID, try to find by metadata subscriptionId
-	if (!dbSubscription && subscription.meta_data?.subscriptionId) {
-		ctx.logger.info(
-			`Looking for subscription by ID: ${subscription.meta_data.subscriptionId}`,
-		);
-		dbSubscription = await ctx.adapter.findOne<Subscription>({
-			model: "subscription",
-			where: [
-				{
-					field: "id",
-					value: subscription.meta_data.subscriptionId,
-				},
-			],
-		});
-
-		if (dbSubscription) {
-			ctx.logger.info(
-				`Found subscription by metadata ID: ${dbSubscription.id}`,
-			);
-		}
-	}
-
-	// If still not found, try to find by customer metadata (for hosted pages)
-	if (!dbSubscription && customer.meta_data?.pendingSubscriptionId) {
-		ctx.logger.info(
-			`Looking for subscription by customer metadata: ${customer.meta_data.pendingSubscriptionId}`,
-		);
-		dbSubscription = await ctx.adapter.findOne<Subscription>({
-			model: "subscription",
-			where: [
-				{
-					field: "id",
-					value: customer.meta_data.pendingSubscriptionId,
-				},
-			],
-		});
-
-		if (dbSubscription) {
-			ctx.logger.info(
-				`Found subscription via customer metadata: ${dbSubscription.id}`,
-			);
-		}
-	}
-
-	// If we found the subscription, update it with Chargebee data
-	if (dbSubscription) {
-		ctx.logger.info(
-			`Updating subscription ${dbSubscription.id} with Chargebee subscription ID ${subscription.id}`,
-		);
-
-		await ctx.adapter.update({
-			model: "subscription",
-			update: {
-				chargebeeSubscriptionId: subscription.id,
-				chargebeeCustomerId: customer.id,
-				status: subscription.status,
-				periodStart: new Date((subscription.current_term_start || 0) * 1000),
-				periodEnd: new Date((subscription.current_term_end || 0) * 1000),
-				cancelAtPeriodEnd: subscription.cancel_at_period_end || false,
-				cancelAt: subscription.cancel_at
-					? new Date((subscription.cancel_at as number) * 1000)
-					: null,
-				canceledAt: subscription.cancelled_at
-					? new Date((subscription.cancelled_at as number) * 1000)
-					: null,
-				endedAt: subscription.ended_at
-					? new Date((subscription.ended_at as number) * 1000)
-					: null,
-				trialStart: subscription.trial_start
-					? new Date((subscription.trial_start as number) * 1000)
-					: null,
-				trialEnd: subscription.trial_end
-					? new Date((subscription.trial_end as number) * 1000)
-					: null,
-				updatedAt: new Date(),
-			},
-			where: [{ field: "id", value: dbSubscription.id }],
-		});
-
-		ctx.logger.info(`Subscription ${dbSubscription.id} updated successfully`);
-	} else {
-		// If not found in database, check if we have referenceId in metadata
-		const referenceId = subscription.meta_data?.referenceId;
-
-		if (!referenceId) {
-			ctx.logger.warn(
-				`Cannot create subscription: missing referenceId in metadata. Subscription ID: ${subscription.id}, Metadata:`,
-				JSON.stringify(subscription.meta_data),
-			);
-			return;
-		}
-	}
-
-	// Sync subscription items
-	if (dbSubscription && subscription.subscription_items) {
-		// Delete existing subscription items
-		await ctx.adapter.deleteMany({
-			model: "subscriptionItem",
-			where: [{ field: "subscriptionId", value: dbSubscription.id }],
-		});
-
-		// Create new subscription items
-		for (const item of subscription.subscription_items) {
-			await ctx.adapter.create({
-				model: "subscriptionItem",
-				data: {
-					subscriptionId: dbSubscription.id,
-					itemPriceId: item.item_price_id,
-					itemType: item.item_type || "plan",
-					quantity: item.quantity || 1,
-					unitPrice: item.unit_price || null,
-					amount: item.amount || null,
-				},
-			});
-		}
-
-		ctx.logger.info(
-			`Synced ${subscription.subscription_items.length} subscription items for subscription ${dbSubscription.id}`,
-		);
-	}
-}
-
-/**
- * Handle subscription cancellation events
- */
-async function handleSubscriptionCancellation(
-	event:
-		| WebhookEvent<WebhookEventType.SubscriptionCancelled>
-		| WebhookEvent<WebhookEventType.SubscriptionCancellationScheduled>,
-	ctx: BetterAuthWebhookContext,
-	options: ChargebeeOptions,
-) {
-	const content = event.content;
-	const subscription = content.subscription;
-
-	if (!subscription) {
-		ctx.logger.warn("Missing subscription in cancellation event");
-		return;
-	}
-
-	const dbSubscription = await ctx.adapter.findOne<Subscription>({
-		model: "subscription",
-		where: [
-			{
-				field: "chargebeeSubscriptionId",
-				value: subscription.id,
-			},
-		],
-	});
-
-	if (!dbSubscription) {
-		ctx.logger.warn(
-			`Subscription ${subscription.id} not found for cancellation`,
-		);
-		return;
-	}
-
-	// Update subscription status
-	await ctx.adapter.update({
-		model: "subscription",
-		update: {
-			status: "cancelled",
-			canceledAt: subscription.cancelled_at
-				? new Date(subscription.cancelled_at * 1000)
-				: new Date(),
-			updatedAt: new Date(),
-		},
-		where: [{ field: "id", value: dbSubscription.id }],
-	});
-
-	// Call subscription deleted callback
-	const subscriptionOptions = options.subscription as SubscriptionOptions;
-	await subscriptionOptions?.onSubscriptionDeleted?.({
-		subscription: {
-			...dbSubscription,
-			status: "cancelled" as const,
-			canceledAt: subscription.cancelled_at
-				? new Date(subscription.cancelled_at * 1000)
-				: new Date(),
-		} as Subscription,
-	});
-
-	ctx.logger.info(`Subscription ${dbSubscription.id} cancelled successfully`);
 }
 
 /**
