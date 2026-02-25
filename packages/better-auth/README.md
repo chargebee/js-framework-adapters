@@ -8,7 +8,7 @@ The Chargebee plugin integrates Chargebee's subscription management and billing 
 
 - Create Chargebee customers automatically when users sign up
 - Manage subscription plans and pricing (item-based: plans, addons, charges)
-- Process subscription lifecycle events (creation, updates, cancellations).co
+- Process subscription lifecycle events (creation, updates, cancellations).
 - Handle Chargebee webhooks securely with Basic Auth verification
 - Expose subscription data to your application
 - Support for trial periods and multi-item subscriptions
