@@ -22,7 +22,7 @@ declare module "@better-auth/core" {
 export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 	const cb = options.chargebeeClient;
 	// @ts-expect-error - __clientIdentifier is not  typed
-	cb.__clientIdentifier("better-auth 1.0.0-beta.1");
+	cb.__clientIdentifier("better-auth 1.0.0-beta.2");
 	return {
 		id: "chargebee",
 		schema: getSchema(options),
