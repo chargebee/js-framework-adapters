@@ -717,6 +717,106 @@ export function cancelSubscriptionCallback(options: ChargebeeOptions) {
 }
 
 /**
+ * Portal session endpoint
+ * Creates a Chargebee portal session for managing subscriptions, payment methods, invoices, etc.
+ */
+export function createPortalSession(options: ChargebeeOptions) {
+	const cb = options.chargebeeClient;
+	const subscriptionOptions = options.subscription as SubscriptionOptions;
+
+	return createAuthEndpoint(
+		"/subscription/portal",
+		{
+			method: "POST",
+			body: z.object({
+				referenceId: z.string().optional(),
+				customerType: z.enum(["user", "organization"]).optional(),
+				returnUrl: z.string(),
+				disableRedirect: z.boolean().optional(),
+			}),
+			metadata: {
+				openapi: {
+					operationId: "createPortalSession",
+				},
+			},
+			use: [
+				sessionMiddleware,
+				referenceMiddleware(subscriptionOptions, "billing-portal"),
+				originCheck((ctx) => ctx.body.returnUrl),
+			],
+		},
+		async (ctx) => {
+			const { user } = ctx.context.session;
+			const customerType = ctx.body.customerType || "user";
+			const referenceId =
+				ctx.body.referenceId ||
+				getReferenceId(ctx.context.session, customerType, options);
+
+			let customerId: string | null | undefined;
+
+			if (customerType === "organization") {
+				// Get organization's customer ID
+				const subscriptions = await ctx.context.adapter.findMany<Subscription>({
+					model: "subscription",
+					where: [{ field: "referenceId", value: referenceId }],
+				});
+
+				const activeSubscription = subscriptions.find((sub) =>
+					isActiveOrTrialing(sub),
+				);
+
+				if (!activeSubscription?.chargebeeCustomerId) {
+					const org = await ctx.context.adapter.findOne<
+						Organization & WithChargebeeCustomerId
+					>({
+						model: "organization",
+						where: [{ field: "id", value: referenceId }],
+					});
+
+					if (!org) {
+						throw new APIError("BAD_REQUEST", {
+							message: CHARGEBEE_ERROR_CODES.ORGANIZATION_NOT_FOUND,
+						});
+					}
+
+					customerId = org.chargebeeCustomerId;
+				} else {
+					customerId = activeSubscription.chargebeeCustomerId;
+				}
+			} else {
+				// Get user's customer ID
+				customerId = user.chargebeeCustomerId;
+			}
+
+			if (!customerId) {
+				throw new APIError("BAD_REQUEST", {
+					message: CHARGEBEE_ERROR_CODES.CUSTOMER_NOT_FOUND,
+				});
+			}
+
+			// Create portal session
+			try {
+				const portalSession = await cb.portalSession.create({
+					customer: { id: customerId },
+					redirect_url: getUrl(ctx, ctx.body.returnUrl),
+				});
+
+				return ctx.json({
+					url: portalSession.portal_session.access_url,
+					redirect: !ctx.body.disableRedirect,
+				});
+			} catch (e) {
+				const error = e as { message?: string; api_error_code?: string };
+				throw ctx.error("BAD_REQUEST", {
+					message: error.message || "An error occurred",
+					code: error.api_error_code,
+				});
+			}
+		},
+	);
+}
+
+/**
  * Cancel subscription endpoint
  * Opens Chargebee portal to cancel subscription
  */

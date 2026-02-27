@@ -446,6 +446,34 @@ await authClient.subscription.upgrade({
 
 This ensures the user is charged only for the new plan.
 
+#### Accessing the Customer Portal
+
+To give users access to the Chargebee customer portal where they can manage their subscription, payment methods, and view invoices:
+
+**Endpoint:** `POST /subscription/portal` (requires session)
+
+```ts
+await authClient.subscription.portal({
+    returnUrl: `${window.location.origin}/dashboard`,
+})
+```
+
+This creates a Chargebee portal session and redirects the user to the Chargebee customer portal. From there, users can:
+- View and manage their subscriptions
+- Update payment methods
+- View billing history and invoices
+- Update billing address
+
+You can also create a portal session for an organization:
+
+```ts
+await authClient.subscription.portal({
+    referenceId: "org_123456",
+    customerType: "organization",
+    returnUrl: `${window.location.origin}/organizations/org_123456`,
+})
+```
+
 #### Canceling a Subscription
 
 To cancel a subscription:

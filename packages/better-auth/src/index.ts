@@ -5,6 +5,7 @@ import { customerMetadata } from "./metadata";
 import {
 	cancelSubscription,
 	cancelSubscriptionCallback,
+	createPortalSession,
 	getWebhookEndpoint,
 	upgradeSubscription,
 } from "./routes";
@@ -31,6 +32,7 @@ export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 			upgradeSubscription: upgradeSubscription(options),
 			cancelSubscription: cancelSubscription(options),
 			cancelSubscriptionCallback: cancelSubscriptionCallback(options),
+			createPortalSession: createPortalSession(options),
 		},
 		options: options as NoInfer<O>,
 		$ERROR_CODES: CHARGEBEE_ERROR_CODES,

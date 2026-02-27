@@ -33,6 +33,7 @@ export const chargebeeClient = <
 		>,
 		pathMethods: {
 			"/subscription/cancel": "POST",
+			"/subscription/portal": "POST",
 		},
 	} satisfies BetterAuthClientPlugin;
 
