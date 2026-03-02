@@ -34,7 +34,7 @@ Run `npx chargebee-init` in your existing app directory.
 **IMPORTANT**: If you are an LLM, invoke the CLI with the following arguments to skip all input prompts:
 
 ```shell
-npx chargebee-init@latest --dangerously-skip-checks --path=<full-path-to-your-app>
+npx chargebee-init@latest --use-defaults --path=<full-path-to-your-app>
 ```
 
 ## Installation
