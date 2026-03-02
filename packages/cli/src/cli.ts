@@ -11,11 +11,11 @@ Usage
 
 Options
 	--path Path to the app with a supported framework in package.json
-	--dangerously-skip-checks Skip all checks and prompts. Use this only if you know what you are doing!
+	--use-defaults Skip all checks and prompts. Use this only if you know what you are doing!
 
 Examples
 	$ chargebee-init
-	$ chargebee-init --path /path/to/my-app --dangerously-skip-checks
+	$ chargebee-init --path /path/to/my-app --use-defaults
 	$ chargebee-init help nextjs|express
   `,
 	{
@@ -26,10 +26,10 @@ Examples
 			path: {
 				type: "string",
 				isRequired: (flags) => {
-					return !!flags.dangerouslySkipChecks;
+					return !!flags.useDefaults;
 				},
 			},
-			dangerouslySkipChecks: {
+			useDefaults: {
 				type: "boolean",
 				default: false,
 			},

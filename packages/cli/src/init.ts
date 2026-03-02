@@ -38,14 +38,14 @@ const checkErrors = ({ errors }: object & { errors: CheckError[] }) => {
 };
 
 export const init = async (flags: Record<string, unknown>): Promise<void> => {
-	const { path, dangerouslySkipChecks } = flags;
+	const { path, useDefaults } = flags;
 	const cwd = (path || process.cwd()) as string;
 	const enquirer = new Enquirer();
 
 	let updatedFiles: string[] = [];
 	let detectedFramework: DetectedFramework | undefined;
 
-	if (!dangerouslySkipChecks) {
+	if (!useDefaults) {
 		const { targetDir } = (await enquirer.prompt(targetDirPrompt(cwd))) as {
 			targetDir: string;
 		};
