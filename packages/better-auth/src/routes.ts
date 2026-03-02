@@ -12,9 +12,11 @@ import type {
 	ChargebeeOptions,
 	Subscription,
 	SubscriptionOptions,
+	WebhookEvent,
 	WithChargebeeCustomerId,
 } from "./types";
 import {
+	getPlanByItemPriceId,
 	getReferenceId,
 	getUrl,
 	isActiveOrTrialing,
@@ -31,17 +33,21 @@ export function getWebhookEndpoint(options: ChargebeeOptions) {
 		},
 		async (ctx) => {
 			// Create webhook handler with better-auth context
-			const handler = createWebhookHandler(options, {
-				context: ctx.context as Record<string, unknown>,
-				adapter: ctx.context.adapter as unknown as {
-					findOne: <T = unknown>(params: unknown) => Promise<T | null>;
-					findMany: <T = unknown>(params: unknown) => Promise<T[]>;
-					update: (params: unknown) => Promise<unknown>;
-					deleteMany: (params: unknown) => Promise<void>;
-					create: (params: unknown) => Promise<unknown>;
+			const handler = createWebhookHandler(
+				options,
+				{
+					context: ctx.context as Record<string, unknown>,
+					adapter: ctx.context.adapter as unknown as {
+						findOne: <T = unknown>(params: unknown) => Promise<T | null>;
+						findMany: <T = unknown>(params: unknown) => Promise<T[]>;
+						update: (params: unknown) => Promise<unknown>;
+						deleteMany: (params: unknown) => Promise<void>;
+						create: (params: unknown) => Promise<unknown>;
+					},
+					logger: ctx.context.logger,
 				},
-				logger: ctx.context.logger,
-			});
+				ctx,
+			);
 
 			// Handle the webhook request using the typed handler
 			await handler.handle({
@@ -56,13 +62,7 @@ export function getWebhookEndpoint(options: ChargebeeOptions) {
 			// Call user-defined event handler if provided
 			if (options.onEvent) {
 				try {
-					await options.onEvent(
-						ctx.body as {
-							event_type: string;
-							content: Record<string, unknown>;
-							[key: string]: unknown;
-						},
-					);
+					await options.onEvent(ctx.body as WebhookEvent);
 				} catch (error) {
 					ctx.context.logger.error("Error in custom onEvent handler:", error);
 				}
@@ -131,6 +131,10 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 					message: "At least one item price ID is required",
 				});
 			}
+
+			// Get the plan for the first item price ID to check for trial
+			const primaryItemPriceId = itemPriceIds[0]!;
+			const plan = await getPlanByItemPriceId(options, primaryItemPriceId);
 
 			// If subscriptionId is provided, find that specific subscription
 			const subscriptionToUpdate = ctx.body.subscriptionId
@@ -448,7 +452,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 			// Get custom params
 			const params = ctx.request
 				? await subscriptionOptions.getHostedPageParams?.(
-						{ user, session, plan: undefined, subscription },
+						{ user, session, plan, subscription },
 						ctx.request,
 						ctx,
 					)
@@ -505,15 +509,58 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 					// Create new subscription using checkoutNewForItems
 					ctx.context.logger.info("Creating new subscription via hosted page");
 
+					// Calculate trial end date from plan configuration
+					let trialEnd = ctx.body.trialEnd;
+					if (!trialEnd && plan?.freeTrial?.days) {
+						// Check if user already had a trial to prevent duplicate trials
+						if (subscriptionOptions.preventDuplicateTrails) {
+							const previousSubscriptions =
+								await ctx.context.adapter.findMany<Subscription>({
+									model: "subscription",
+									where: [{ field: "referenceId", value: referenceId }],
+								});
+
+							const hadTrial = previousSubscriptions.some(
+								(sub) => sub.trialStart != null,
+							);
+
+							if (!hadTrial) {
+								// Calculate trial end: current time + trial days
+								const trialEndDate = new Date();
+								trialEndDate.setDate(
+									trialEndDate.getDate() + plan.freeTrial.days,
+								);
+								trialEnd = Math.floor(trialEndDate.getTime() / 1000);
+								ctx.context.logger.info(
+									`Applying ${plan.freeTrial.days}-day trial (ends: ${trialEndDate.toISOString()})`,
+								);
+							} else {
+								ctx.context.logger.info(
+									"User already had a trial, skipping duplicate trial",
+								);
+							}
+						} else {
+							// Calculate trial end: current time + trial days
+							const trialEndDate = new Date();
+							trialEndDate.setDate(
+								trialEndDate.getDate() + plan.freeTrial.days,
+							);
+							trialEnd = Math.floor(trialEndDate.getTime() / 1000);
+							ctx.context.logger.info(
+								`Applying ${plan.freeTrial.days}-day trial (ends: ${trialEndDate.toISOString()})`,
+							);
+						}
+					}
+
 					const newSubParams: Record<string, unknown> = {
 						subscription_items: itemPriceIds.map((id: string) => ({
 							item_price_id: id,
 							quantity: ctx.body.seats || 1,
 						})),
 						customer: { id: customerId },
-						...(ctx.body.trialEnd && {
+						...(trialEnd && {
 							subscription: {
-								trial_end: ctx.body.trialEnd,
+								trial_end: trialEnd,
 							},
 						}),
 						redirect_url: getUrl(
@@ -646,6 +693,7 @@ export function cancelSubscriptionCallback(options: ChargebeeOptions) {
 											? new Date(chargebeeSub.cancelled_at * 1000)
 											: new Date(),
 									},
+									chargebeeSubscription: chargebeeSub,
 								});
 							}
 						} catch (error) {
@@ -664,6 +712,106 @@ export function cancelSubscriptionCallback(options: ChargebeeOptions) {
 			}
 
 			throw ctx.redirect(getUrl(ctx, callbackURL));
+		},
+	);
+}
+
+/**
+ * Portal session endpoint
+ * Creates a Chargebee portal session for managing subscriptions, payment methods, invoices, etc.
+ */
+export function createPortalSession(options: ChargebeeOptions) {
+	const cb = options.chargebeeClient;
+	const subscriptionOptions = options.subscription as SubscriptionOptions;
+
+	return createAuthEndpoint(
+		"/subscription/portal",
+		{
+			method: "POST",
+			body: z.object({
+				referenceId: z.string().optional(),
+				customerType: z.enum(["user", "organization"]).optional(),
+				returnUrl: z.string(),
+				disableRedirect: z.boolean().optional(),
+			}),
+			metadata: {
+				openapi: {
+					operationId: "createPortalSession",
+				},
+			},
+			use: [
+				sessionMiddleware,
+				referenceMiddleware(subscriptionOptions, "billing-portal"),
+				originCheck((ctx) => ctx.body.returnUrl),
+			],
+		},
+		async (ctx) => {
+			const { user } = ctx.context.session;
+			const customerType = ctx.body.customerType || "user";
+			const referenceId =
+				ctx.body.referenceId ||
+				getReferenceId(ctx.context.session, customerType, options);
+
+			let customerId: string | null | undefined;
+
+			if (customerType === "organization") {
+				// Get organization's customer ID
+				const subscriptions = await ctx.context.adapter.findMany<Subscription>({
+					model: "subscription",
+					where: [{ field: "referenceId", value: referenceId }],
+				});
+
+				const activeSubscription = subscriptions.find((sub) =>
+					isActiveOrTrialing(sub),
+				);
+
+				if (!activeSubscription?.chargebeeCustomerId) {
+					const org = await ctx.context.adapter.findOne<
+						Organization & WithChargebeeCustomerId
+					>({
+						model: "organization",
+						where: [{ field: "id", value: referenceId }],
+					});
+
+					if (!org) {
+						throw new APIError("BAD_REQUEST", {
+							message: CHARGEBEE_ERROR_CODES.ORGANIZATION_NOT_FOUND,
+						});
+					}
+
+					customerId = org.chargebeeCustomerId;
+				} else {
+					customerId = activeSubscription.chargebeeCustomerId;
+				}
+			} else {
+				// Get user's customer ID
+				customerId = user.chargebeeCustomerId;
+			}
+
+			if (!customerId) {
+				throw new APIError("BAD_REQUEST", {
+					message: CHARGEBEE_ERROR_CODES.CUSTOMER_NOT_FOUND,
+				});
+			}
+
+			// Create portal session
+			try {
+				const portalSession = await cb.portalSession.create({
+					customer: { id: customerId },
+					redirect_url: getUrl(ctx, ctx.body.returnUrl),
+				});
+
+				return ctx.json({
+					url: portalSession.portal_session.access_url,
+					redirect: !ctx.body.disableRedirect,
+				});
+			} catch (e) {
+				const error = e as { message?: string; api_error_code?: string };
+				throw ctx.error("BAD_REQUEST", {
+					message: error.message || "An error occurred",
+					code: error.api_error_code,
+				});
+			}
 		},
 	);
 }

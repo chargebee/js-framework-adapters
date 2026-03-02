@@ -2,6 +2,7 @@ import type { Session, User } from "better-auth";
 import type { Organization } from "better-auth/plugins/organization";
 import type Chargebee from "chargebee";
 import type {
+	Event as ChargebeeEvent,
 	Subscription as ChargebeeSubscription,
 	Customer,
 } from "chargebee";
@@ -80,20 +81,36 @@ export type SubscriptionOptions = {
 	requireEmailVerification?: boolean;
 
 	// subscription lifecycle
-	onSubscriptionComplete?: (
-		params: SubscriptionEventParams,
-	) => Promise<void> | void;
-	onSubscriptionCreated?: (
-		params: SubscriptionEventParams,
-	) => Promise<void> | void;
-	onSubscriptionUpdate?: (
-		params: SubscriptionEventParams,
-	) => Promise<void> | void;
-	onSubscriptionDeleted?: (
-		params: SubscriptionEventParams,
-	) => Promise<void> | void;
-	onTrialStart?: (params: SubscriptionEventParams) => Promise<void> | void;
-	onTrialEnd?: (params: SubscriptionEventParams) => Promise<void> | void;
+	onSubscriptionComplete?: (params: {
+		subscription: Subscription;
+		chargebeeSubscription: ChargebeeSubscription;
+		plan?: ChargebeePlan;
+	}) => Promise<void> | void;
+	onSubscriptionCreated?: (params: {
+		subscription: Subscription;
+		chargebeeSubscription: ChargebeeSubscription;
+		plan?: ChargebeePlan;
+	}) => Promise<void> | void;
+	onSubscriptionUpdate?: (params: {
+		subscription: Subscription;
+		chargebeeSubscription?: ChargebeeSubscription;
+	}) => Promise<void> | void;
+	onSubscriptionCancel?: (params: {
+		subscription: Subscription;
+		chargebeeSubscription: ChargebeeSubscription;
+	}) => Promise<void> | void;
+	onSubscriptionDeleted?: (params: {
+		subscription: Subscription;
+		chargebeeSubscription?: ChargebeeSubscription;
+	}) => Promise<void> | void;
+	onTrialStart?: (params: {
+		subscription: Subscription;
+		chargebeeSubscription?: ChargebeeSubscription;
+	}) => Promise<void> | void;
+	onTrialEnd?: (params: {
+		subscription: Subscription;
+		chargebeeSubscription?: ChargebeeSubscription;
+	}) => Promise<void> | void;
 
 	// hostedPages
 	getHostedPageParams?: (
@@ -119,11 +136,7 @@ export type SubscriptionOptions = {
 	) => Promise<boolean>;
 };
 
-export interface WebhookEvent {
-	event_type: string;
-	content: Record<string, unknown>;
-	[key: string]: unknown;
-}
+export type WebhookEvent = ChargebeeEvent;
 
 // Use native Chargebee customer creation params
 export type ChargebeeCustomerCreateParams = Partial<Customer.CreateInputParam>;
