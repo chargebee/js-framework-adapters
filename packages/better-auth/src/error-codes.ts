@@ -1,4 +1,4 @@
-import { defineErrorCodes } from "@better-auth/core/utils";
+import { defineErrorCodes } from "@better-auth/core/utils/error-codes";
 
 export const CHARGEBEE_ERROR_CODES = defineErrorCodes({
 	ALREADY_SUBSCRIBED: "You're already subscribed to this plan",

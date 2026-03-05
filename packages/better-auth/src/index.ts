@@ -13,7 +13,7 @@ import { getSchema } from "./schema";
 import type { ChargebeeOptions, WithChargebeeCustomerId } from "./types";
 
 declare module "@better-auth/core" {
-	interface BetterAuthPluginRegistry {
+	interface BetterAuthPluginRegistry<AuthOptions, Options> {
 		chargebee: {
 			creator: typeof chargebee;
 		};
