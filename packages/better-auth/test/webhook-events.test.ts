@@ -1,3 +1,4 @@
+import type { GenericEndpointContext } from "@better-auth/core";
 import type Chargebee from "chargebee";
 import {
 	WebhookAuthenticationError,
@@ -25,6 +26,13 @@ describe("webhook handler - event processing", () => {
 		},
 	};
 
+	const mockEndpointCtx = {
+		context: {
+			adapter: mockContext.adapter,
+			logger: mockContext.logger,
+		},
+	} as GenericEndpointContext;
+
 	let mockHandlerInstance: {
 		on: ReturnType<typeof vi.fn>;
 		handle: ReturnType<typeof vi.fn>;
@@ -40,6 +48,21 @@ describe("webhook handler - event processing", () => {
 		chargebeeClient: mockChargebee,
 		webhookUsername: "test_user",
 		webhookPassword: "test_pass",
+		subscription: {
+			enabled: true,
+			plans: [
+				{
+					name: "Basic Plan",
+					itemPriceId: "plan-USD-monthly",
+					type: "plan" as const,
+				},
+				{
+					name: "Premium Plan",
+					itemPriceId: "plan-USD-yearly",
+					type: "plan" as const,
+				},
+			],
+		},
 	};
 
 	beforeEach(() => {
@@ -56,237 +79,240 @@ describe("webhook handler - event processing", () => {
 	});
 
 	describe("handleSubscriptionEvent", () => {
-		it("should update subscription when found by chargebeeSubscriptionId", async () => {
-			const mockEvent: WebhookEvent<WebhookEventType.SubscriptionCreated> = {
-				id: "ev_123",
-				occurred_at: 1234567890,
-				source: "scheduled",
-				object: "event",
-				api_version: "v2",
-				event_type: "subscription_created" as WebhookEventType.SubscriptionCreated,
-				webhook_status: "scheduled",
-				content: {
-					subscription: {
-						id: "sub_123",
-						customer_id: "cust_123",
-						status: "active",
-						current_term_start: 1234567890,
-						current_term_end: 1267103890,
-						object: "subscription",
-						subscription_items: [
-							{
-								item_price_id: "plan-USD-monthly",
-								item_type: "plan",
-								quantity: 1,
-								unit_price: 999,
-								amount: 999,
-							},
-						],
-					},
-					customer: {
-						id: "cust_123",
-						email: "test@example.com",
-						object: "customer",
-					},
-				},
-			};
-
-			mockContext.adapter.findOne = vi.fn().mockResolvedValue({
-				id: "local_sub_123",
-				referenceId: "user_123",
-				chargebeeSubscriptionId: "sub_123",
-			});
-
-			mockContext.adapter.update = vi.fn().mockResolvedValue({});
-			mockContext.adapter.deleteMany = vi.fn().mockResolvedValue({});
-			mockContext.adapter.create = vi.fn().mockResolvedValue({
-				id: "item_123",
-			});
-
-			createWebhookHandler(mockOptions, mockContext);
-
-			const onHandler = mockHandlerInstance.on.mock.calls.find(
-				(call) => call[0] === WebhookEventType.SubscriptionCreated,
-			);
-			expect(onHandler).toBeDefined();
-
-			if (onHandler) {
-				const eventHandler = onHandler[1];
-				await eventHandler({
-					event: mockEvent,
-					response: {
-						status: vi.fn().mockReturnThis(),
-						send: vi.fn(),
-					},
-				});
-
-				expect(mockContext.adapter.findOne).toHaveBeenCalledWith({
-					model: "subscription",
-					where: [
+	it("should create subscription when not found", async () => {
+		const mockEvent: WebhookEvent<WebhookEventType.SubscriptionCreated> = {
+			id: "ev_123",
+			occurred_at: 1234567890,
+			source: "scheduled",
+			object: "event",
+			api_version: "v2",
+			event_type: "subscription_created" as WebhookEventType.SubscriptionCreated,
+			webhook_status: "scheduled",
+			content: {
+				subscription: {
+					id: "sub_123",
+					customer_id: "cust_123",
+					status: "active",
+					current_term_start: 1234567890,
+					current_term_end: 1267103890,
+					object: "subscription",
+					subscription_items: [
 						{
-							field: "chargebeeSubscriptionId",
-							value: "sub_123",
+							item_price_id: "plan-USD-monthly",
+							item_type: "plan",
+							quantity: 1,
+							unit_price: 999,
+							amount: 999,
 						},
 					],
-				});
+				},
+				customer: {
+					id: "cust_123",
+					email: "test@example.com",
+					object: "customer",
+				},
+			},
+		};
 
-				expect(mockContext.adapter.update).toHaveBeenCalled();
-				expect(mockContext.adapter.deleteMany).toHaveBeenCalledWith({
-					model: "subscriptionItem",
-					where: [{ field: "subscriptionId", value: "local_sub_123" }],
-				});
-				expect(mockContext.adapter.create).toHaveBeenCalled();
-			}
-		});
+	// Mock that subscription doesn't exist yet
+	mockContext.adapter.findOne = vi.fn()
+		.mockResolvedValueOnce(null) // First call: check if subscription exists
+		.mockResolvedValueOnce({ id: "user_123", email: "test@example.com", chargebeeCustomerId: "cust_123" }); // Second call: find user
 
-		it("should find subscription by metadata subscriptionId", async () => {
-			const mockEvent: WebhookEvent<WebhookEventType.SubscriptionCreated> = {
-				id: "ev_123",
-				occurred_at: 1234567890,
-				source: "scheduled",
-				object: "event",
-				api_version: "v2",
-				event_type: "subscription_created" as WebhookEventType.SubscriptionCreated,
-				webhook_status: "scheduled",
-				content: {
-					subscription: {
-						id: "sub_123",
-						customer_id: "cust_123",
-						status: "active",
-						current_term_start: 1234567890,
-						current_term_end: 1267103890,
-						object: "subscription",
-						meta_data: {
-							subscriptionId: "local_sub_456",
+	mockContext.adapter.create = vi.fn()
+		.mockResolvedValueOnce({ id: "local_sub_123" }) // Create subscription
+		.mockResolvedValue({ id: "item_123" }); // Create subscription items
+
+		createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
+
+		const onHandler = mockHandlerInstance.on.mock.calls.find(
+			(call) => call[0] === WebhookEventType.SubscriptionCreated,
+		);
+		expect(onHandler).toBeDefined();
+
+		if (onHandler) {
+			const eventHandler = onHandler[1];
+			await eventHandler({
+				event: mockEvent,
+				response: {
+					status: vi.fn().mockReturnThis(),
+					send: vi.fn(),
+				},
+			});
+
+			expect(mockContext.adapter.findOne).toHaveBeenCalledWith({
+				model: "subscription",
+				where: [
+					{
+						field: "chargebeeSubscriptionId",
+						value: "sub_123",
+					},
+				],
+			});
+
+			expect(mockContext.adapter.create).toHaveBeenCalled();
+		}
+	});
+
+	it("should find subscription by metadata subscriptionId", async () => {
+		const mockEvent: WebhookEvent<WebhookEventType.SubscriptionActivated> = {
+			id: "ev_123",
+			occurred_at: 1234567890,
+			source: "scheduled",
+			object: "event",
+			api_version: "v2",
+			event_type: "subscription_activated" as WebhookEventType.SubscriptionActivated,
+			webhook_status: "scheduled",
+			content: {
+				subscription: {
+					id: "sub_123",
+					customer_id: "cust_123",
+					status: "active",
+					current_term_start: 1234567890,
+					current_term_end: 1267103890,
+					object: "subscription",
+					subscription_items: [
+						{
+							item_price_id: "plan-USD-monthly",
+							item_type: "plan",
+							quantity: 1,
+							unit_price: 999,
+							amount: 999,
 						},
-					},
-					customer: {
-						id: "cust_123",
-						email: "test@example.com",
-						object: "customer",
+					],
+					meta_data: {
+						subscriptionId: "local_sub_456",
 					},
 				},
-			};
-
-			mockContext.adapter.findOne = vi
-				.fn()
-				.mockResolvedValueOnce(null) // First call by chargebeeSubscriptionId
-				.mockResolvedValueOnce({
-					// Second call by metadata subscriptionId
-					id: "local_sub_456",
-					referenceId: "user_123",
-				});
-
-			mockContext.adapter.update = vi.fn().mockResolvedValue({});
-
-			createWebhookHandler(mockOptions, mockContext);
-
-			const onHandler = mockHandlerInstance.on.mock.calls.find(
-				(call) => call[0] === WebhookEventType.SubscriptionCreated,
-			);
-
-			if (onHandler) {
-				const eventHandler = onHandler[1];
-				await eventHandler({
-					event: mockEvent,
-					response: {
-						status: vi.fn().mockReturnThis(),
-						send: vi.fn(),
-					},
-				});
-
-				expect(mockContext.adapter.findOne).toHaveBeenCalledTimes(2);
-				expect(mockContext.adapter.update).toHaveBeenCalled();
-			}
-		});
-
-		it("should warn when subscription found but no items to sync", async () => {
-			const mockEvent: WebhookEvent<WebhookEventType.SubscriptionCreated> = {
-				id: "ev_123",
-				occurred_at: 1234567890,
-				source: "scheduled",
-				object: "event",
-				api_version: "v2",
-				event_type: "subscription_created" as WebhookEventType.SubscriptionCreated,
-				webhook_status: "scheduled",
-				content: {
-					subscription: {
-						id: "sub_123",
-						customer_id: "cust_123",
-						status: "active",
-						current_term_start: 1234567890,
-						current_term_end: 1267103890,
-						object: "subscription",
-					},
-					customer: {
-						id: "cust_123",
-						email: "test@example.com",
-						object: "customer",
-					},
+				customer: {
+					id: "cust_123",
+					email: "test@example.com",
+					object: "customer",
 				},
-			};
+			},
+		};
 
-			mockContext.adapter.findOne = vi.fn().mockResolvedValue({
-				id: "local_sub_789",
+		mockContext.adapter.findOne = vi
+			.fn()
+			.mockResolvedValueOnce(null) // First call by chargebeeSubscriptionId
+			.mockResolvedValueOnce({
+				// Second call by metadata subscriptionId
+				id: "local_sub_456",
 				referenceId: "user_123",
 			});
 
-			mockContext.adapter.update = vi.fn().mockResolvedValue({});
+		mockContext.adapter.update = vi.fn().mockResolvedValue({});
 
-			createWebhookHandler(mockOptions, mockContext);
+		createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
-			const onHandler = mockHandlerInstance.on.mock.calls.find(
-				(call) => call[0] === WebhookEventType.SubscriptionCreated,
-			);
+		const onHandler = mockHandlerInstance.on.mock.calls.find(
+			(call) => call[0] === WebhookEventType.SubscriptionActivated,
+		);
 
-			if (onHandler) {
-				const eventHandler = onHandler[1];
-				await eventHandler({
-					event: mockEvent,
-					response: {
-						status: vi.fn().mockReturnThis(),
-						send: vi.fn(),
-					},
-				});
+		if (onHandler) {
+			const eventHandler = onHandler[1];
+			await eventHandler({
+				event: mockEvent,
+				response: {
+					status: vi.fn().mockReturnThis(),
+					send: vi.fn(),
+				},
+			});
 
-				expect(mockContext.adapter.findOne).toHaveBeenCalled();
-				expect(mockContext.adapter.update).toHaveBeenCalled();
-			}
+			expect(mockContext.adapter.findOne).toHaveBeenCalledTimes(2);
+			expect(mockContext.adapter.update).toHaveBeenCalled();
+		}
+	});
+
+	it("should warn when subscription found but no items to sync", async () => {
+		const mockEvent: WebhookEvent<WebhookEventType.SubscriptionChanged> = {
+			id: "ev_123",
+			occurred_at: 1234567890,
+			source: "scheduled",
+			object: "event",
+			api_version: "v2",
+			event_type: "subscription_changed" as WebhookEventType.SubscriptionChanged,
+			webhook_status: "scheduled",
+			content: {
+				subscription: {
+					id: "sub_123",
+					customer_id: "cust_123",
+					status: "active",
+					current_term_start: 1234567890,
+					current_term_end: 1267103890,
+					object: "subscription",
+				},
+				customer: {
+					id: "cust_123",
+					email: "test@example.com",
+					object: "customer",
+				},
+			},
+		};
+
+		mockContext.adapter.findOne = vi.fn().mockResolvedValue({
+			id: "local_sub_789",
+			referenceId: "user_123",
+			chargebeeSubscriptionId: "sub_123",
 		});
 
-		it("should warn when subscription or customer is missing", async () => {
-			const mockEvent: WebhookEvent<WebhookEventType.SubscriptionCreated> = {
-				id: "ev_123",
-				occurred_at: 1234567890,
-				source: "scheduled",
-				object: "event",
-				api_version: "v2",
-				event_type: "subscription_created" as WebhookEventType.SubscriptionCreated,
-				webhook_status: "scheduled",
-				content: {} as never,
-			};
+		createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
-			createWebhookHandler(mockOptions, mockContext);
+		const onHandler = mockHandlerInstance.on.mock.calls.find(
+			(call) => call[0] === WebhookEventType.SubscriptionChanged,
+		);
 
-			const onHandler = mockHandlerInstance.on.mock.calls.find(
-				(call) => call[0] === WebhookEventType.SubscriptionCreated,
-			);
+		if (onHandler) {
+			const eventHandler = onHandler[1];
+			await eventHandler({
+				event: mockEvent,
+				response: {
+					status: vi.fn().mockReturnThis(),
+					send: vi.fn(),
+				},
+			});
 
-			if (onHandler) {
-				const eventHandler = onHandler[1];
-				await eventHandler({
-					event: mockEvent,
-					response: {
-						status: vi.fn().mockReturnThis(),
-						send: vi.fn(),
-					},
-				});
+		// Should not call adapter when subscription has no items
+		expect(mockContext.adapter.findOne).not.toHaveBeenCalled();
+		expect(mockContext.logger.warn).toHaveBeenCalledWith(
+			expect.stringContaining("Subscription sub_123 has no items"),
+		);
+	}
+});
 
-				expect(mockContext.logger.warn).toHaveBeenCalledWith(
-					"Missing subscription or customer in webhook event",
-				);
-			}
-		});
+	it("should skip processing when subscription or customer is missing", async () => {
+		const mockEvent: WebhookEvent<WebhookEventType.SubscriptionCreated> = {
+			id: "ev_123",
+			occurred_at: 1234567890,
+			source: "scheduled",
+			object: "event",
+			api_version: "v2",
+			event_type: "subscription_created" as WebhookEventType.SubscriptionCreated,
+			webhook_status: "scheduled",
+			content: {} as never,
+		};
+
+		createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
+
+		const onHandler = mockHandlerInstance.on.mock.calls.find(
+			(call) => call[0] === WebhookEventType.SubscriptionCreated,
+		);
+
+		if (onHandler) {
+			const eventHandler = onHandler[1];
+			await eventHandler({
+				event: mockEvent,
+				response: {
+					status: vi.fn().mockReturnThis(),
+					send: vi.fn(),
+				},
+			});
+
+			// Should not call adapter when subscription/customer is missing
+			expect(mockContext.adapter.findOne).not.toHaveBeenCalled();
+			expect(mockContext.adapter.create).not.toHaveBeenCalled();
+		}
+	});
 
 		it("should warn when subscription not found and no referenceId in metadata", async () => {
 			const mockEvent: WebhookEvent<WebhookEventType.SubscriptionCreated> = {
@@ -316,7 +342,7 @@ describe("webhook handler - event processing", () => {
 
 			mockContext.adapter.findOne = vi.fn().mockResolvedValue(null);
 
-			createWebhookHandler(mockOptions, mockContext);
+			createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 			const onHandler = mockHandlerInstance.on.mock.calls.find(
 				(call) => call[0] === WebhookEventType.SubscriptionCreated,
@@ -332,83 +358,85 @@ describe("webhook handler - event processing", () => {
 					},
 				});
 
-			expect(mockContext.logger.warn).toHaveBeenCalled();
-			const warnCall = mockContext.logger.warn.mock.calls[0];
-			expect(warnCall[0]).toContain("Cannot create subscription");
-			}
+		expect(mockContext.logger.warn).toHaveBeenCalled();
+		const warnCall = mockContext.logger.warn.mock.calls[0];
+		expect(warnCall[0]).toContain("No user or organization found");
+		}
+	});
+
+	it("should sync subscription items with trial dates", async () => {
+		const mockEvent: WebhookEvent<WebhookEventType.SubscriptionChanged> = {
+			id: "ev_123",
+			occurred_at: 1234567890,
+			source: "scheduled",
+			object: "event",
+			api_version: "v2",
+			event_type: "subscription_changed" as WebhookEventType.SubscriptionChanged,
+			webhook_status: "scheduled",
+			content: {
+				subscription: {
+					id: "sub_123",
+					customer_id: "cust_123",
+					status: "in_trial",
+					current_term_start: 1234567890,
+					current_term_end: 1267103890,
+					trial_start: 1234567890,
+					trial_end: 1237159890,
+					object: "subscription",
+					subscription_items: [
+						{
+							item_price_id: "plan-USD-monthly",
+							item_type: "plan",
+							quantity: 1,
+						},
+					],
+				},
+				customer: {
+					id: "cust_123",
+					email: "test@example.com",
+					object: "customer",
+				},
+			},
+		};
+
+		mockContext.adapter.findOne = vi.fn().mockResolvedValue({
+			id: "local_sub_123",
+			referenceId: "user_123",
+			chargebeeSubscriptionId: "sub_123",
+			status: "active",
 		});
 
-		it("should sync subscription items with trial dates", async () => {
-			const mockEvent: WebhookEvent<WebhookEventType.SubscriptionCreated> = {
-				id: "ev_123",
-				occurred_at: 1234567890,
-				source: "scheduled",
-				object: "event",
-				api_version: "v2",
-				event_type: "subscription_created" as WebhookEventType.SubscriptionCreated,
-				webhook_status: "scheduled",
-				content: {
-					subscription: {
-						id: "sub_123",
-						customer_id: "cust_123",
-						status: "in_trial",
-						current_term_start: 1234567890,
-						current_term_end: 1267103890,
-						trial_start: 1234567890,
-						trial_end: 1237159890,
-						object: "subscription",
-						subscription_items: [
-							{
-								item_price_id: "plan-USD-monthly",
-								item_type: "plan",
-								quantity: 1,
-							},
-						],
-					},
-					customer: {
-						id: "cust_123",
-						email: "test@example.com",
-						object: "customer",
-					},
-				},
-			};
+		mockContext.adapter.update = vi.fn().mockResolvedValue({});
+		mockContext.adapter.deleteMany = vi.fn().mockResolvedValue({});
+		mockContext.adapter.create = vi.fn().mockResolvedValue({});
 
-			mockContext.adapter.findOne = vi.fn().mockResolvedValue({
-				id: "local_sub_123",
-				referenceId: "user_123",
+		createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
+
+		const onHandler = mockHandlerInstance.on.mock.calls.find(
+			(call) => call[0] === WebhookEventType.SubscriptionChanged,
+		);
+
+		if (onHandler) {
+			const eventHandler = onHandler[1];
+			await eventHandler({
+				event: mockEvent,
+				response: {
+					status: vi.fn().mockReturnThis(),
+					send: vi.fn(),
+				},
 			});
 
-			mockContext.adapter.update = vi.fn().mockResolvedValue({});
-			mockContext.adapter.deleteMany = vi.fn().mockResolvedValue({});
-			mockContext.adapter.create = vi.fn().mockResolvedValue({});
-
-			createWebhookHandler(mockOptions, mockContext);
-
-			const onHandler = mockHandlerInstance.on.mock.calls.find(
-				(call) => call[0] === WebhookEventType.SubscriptionCreated,
-			);
-
-			if (onHandler) {
-				const eventHandler = onHandler[1];
-				await eventHandler({
-					event: mockEvent,
-					response: {
-						status: vi.fn().mockReturnThis(),
-						send: vi.fn(),
-					},
-				});
-
-				expect(mockContext.adapter.update).toHaveBeenCalledWith(
-					expect.objectContaining({
-						model: "subscription",
-						update: expect.objectContaining({
-							trialStart: expect.any(Date),
-							trialEnd: expect.any(Date),
-						}),
+			expect(mockContext.adapter.update).toHaveBeenCalledWith(
+				expect.objectContaining({
+					model: "subscription",
+					update: expect.objectContaining({
+						trialStart: expect.any(Date),
+						trialEnd: expect.any(Date),
 					}),
-				);
-			}
-		});
+				}),
+			);
+		}
+	});
 	});
 
 	describe("handleSubscriptionCancellation", () => {
@@ -446,7 +474,7 @@ describe("webhook handler - event processing", () => {
 
 			mockContext.adapter.update = vi.fn().mockResolvedValue({});
 
-			createWebhookHandler(mockOptions, mockContext);
+			createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 			const onHandler = mockHandlerInstance.on.mock.calls.find(
 				(call) => call[0] === WebhookEventType.SubscriptionCancelled,
@@ -500,7 +528,7 @@ describe("webhook handler - event processing", () => {
 
 			mockContext.adapter.findOne = vi.fn().mockResolvedValue(null);
 
-			createWebhookHandler(mockOptions, mockContext);
+			createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 			const onHandler = mockHandlerInstance.on.mock.calls.find(
 				(call) => call[0] === WebhookEventType.SubscriptionCancelled,
@@ -516,13 +544,13 @@ describe("webhook handler - event processing", () => {
 					},
 				});
 
-				expect(mockContext.logger.warn).toHaveBeenCalledWith(
-					expect.stringContaining("not found for cancellation"),
-				);
-			}
-		});
+			expect(mockContext.logger.warn).toHaveBeenCalledWith(
+				expect.stringContaining("Subscription not found for subscriptionId"),
+			);
+		}
+	});
 
-		it("should call onSubscriptionDeleted callback", async () => {
+	it("should call onSubscriptionDeleted callback", async () => {
 			const onSubscriptionDeleted = vi.fn();
 			const optionsWithCallback: ChargebeeOptions = {
 				...mockOptions,
@@ -562,11 +590,11 @@ describe("webhook handler - event processing", () => {
 				referenceId: "user_123",
 			});
 
-			mockContext.adapter.update = vi.fn().mockResolvedValue({});
+		mockContext.adapter.update = vi.fn().mockResolvedValue({});
 
-			createWebhookHandler(optionsWithCallback, mockContext);
+		createWebhookHandler(optionsWithCallback, mockContext, mockEndpointCtx);
 
-			const onHandler = mockHandlerInstance.on.mock.calls.find(
+		const onHandler = mockHandlerInstance.on.mock.calls.find(
 				(call) => call[0] === WebhookEventType.SubscriptionCancelled,
 			);
 
@@ -619,7 +647,7 @@ describe("webhook handler - event processing", () => {
 			mockContext.adapter.deleteMany = vi.fn().mockResolvedValue({});
 			mockContext.adapter.update = vi.fn().mockResolvedValue({});
 
-			createWebhookHandler(mockOptions, mockContext);
+			createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 			const onHandler = mockHandlerInstance.on.mock.calls.find(
 				(call) => call[0] === WebhookEventType.CustomerDeleted,
@@ -676,13 +704,13 @@ describe("webhook handler - event processing", () => {
 				},
 			};
 
-			mockContext.adapter.findMany = vi.fn().mockResolvedValue([]);
-			mockContext.adapter.update = vi.fn().mockResolvedValue({});
+		mockContext.adapter.findMany = vi.fn().mockResolvedValue([]);
+		mockContext.adapter.update = vi.fn().mockResolvedValue({});
 
-			createWebhookHandler(optionsWithOrg, mockContext);
+		createWebhookHandler(optionsWithOrg, mockContext, mockEndpointCtx);
 
-			const onHandler = mockHandlerInstance.on.mock.calls.find(
-				(call) => call[0] === WebhookEventType.CustomerDeleted,
+		const onHandler = mockHandlerInstance.on.mock.calls.find(
+			(call) => call[0] === WebhookEventType.CustomerDeleted,
 			);
 
 			if (onHandler) {
@@ -725,7 +753,7 @@ describe("webhook handler - event processing", () => {
 
 			mockContext.adapter.findMany = vi.fn().mockResolvedValue([]);
 
-			createWebhookHandler(mockOptions, mockContext);
+			createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 			const onHandler = mockHandlerInstance.on.mock.calls.find(
 				(call) => call[0] === WebhookEventType.CustomerDeleted,
@@ -763,7 +791,7 @@ describe("webhook handler - event processing", () => {
 				send: vi.fn(),
 			};
 
-			createWebhookHandler(mockOptions, mockContext);
+			createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 			const onErrorHandler = mockHandlerInstance.on.mock.calls.find(
 				(call) => call[0] === "error",
@@ -788,7 +816,7 @@ describe("webhook handler - event processing", () => {
 				send: vi.fn(),
 			};
 
-			createWebhookHandler(mockOptions, mockContext);
+			createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 			const onErrorHandler = mockHandlerInstance.on.mock.calls.find(
 				(call) => call[0] === "error",
@@ -810,7 +838,7 @@ describe("webhook handler - event processing", () => {
 		it("should handle error without response object", async () => {
 			const error = new Error("No response");
 
-			createWebhookHandler(mockOptions, mockContext);
+			createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 			const onErrorHandler = mockHandlerInstance.on.mock.calls.find(
 				(call) => call[0] === "error",
@@ -841,7 +869,7 @@ describe("webhook handler - event processing", () => {
 				content: {},
 			};
 
-			createWebhookHandler(mockOptions, mockContext);
+			createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 			const onHandler = mockHandlerInstance.on.mock.calls.find(
 				(call) => call[0] === "unhandled_event",

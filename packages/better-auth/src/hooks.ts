@@ -98,7 +98,13 @@ export async function onSubscriptionCreated(
 		}
 
 		// Get the first item to determine the plan
-		const primaryItem = subscriptionItems[0]!;
+		const primaryItem = subscriptionItems[0];
+		if (!primaryItem) {
+			ctx.context.logger.warn(
+				`Chargebee webhook warning: Subscription ${subscription.id} has no valid items`,
+			);
+			return;
+		}
 		const itemPriceId = primaryItem.item_price_id;
 
 		const subscriptionOptions = options.subscription as SubscriptionOptions;
@@ -175,7 +181,7 @@ export async function onSubscriptionCreated(
 				chargebeeSubscription: subscription,
 			});
 		}
-	} catch (error: any) {
+	} catch (error: unknown) {
 		ctx.context.logger.error(`Chargebee webhook failed. Error: ${error}`);
 	}
 }
@@ -226,8 +232,8 @@ export async function onSubscriptionUpdated(
 					return;
 				}
 				dbSubscription = activeSub;
-			} else {
-				dbSubscription = subs[0]!;
+			} else if (subs[0]) {
+				dbSubscription = subs[0];
 			}
 		}
 
@@ -242,7 +248,13 @@ export async function onSubscriptionUpdated(
 		const wasTrialing = dbSubscription.status === "in_trial";
 		const isNowActive = subscription.status === "active";
 
-		const primaryItem = subscriptionItems[0]!;
+		const primaryItem = subscriptionItems[0];
+		if (!primaryItem) {
+			ctx.context.logger.warn(
+				`Chargebee webhook warning: Subscription ${subscription.id} has no valid items`,
+			);
+			return;
+		}
 		const periodStart = subscription.current_term_start
 			? new Date(subscription.current_term_start * 1000)
 			: undefined;
@@ -325,7 +337,7 @@ export async function onSubscriptionUpdated(
 				chargebeeSubscription: subscription,
 			});
 		}
-	} catch (error: any) {
+	} catch (error: unknown) {
 		ctx.context.logger.error(`Chargebee webhook failed. Error: ${error}`);
 	}
 }
@@ -387,7 +399,7 @@ export async function onSubscriptionDeleted(
 				`Chargebee webhook error: Subscription not found for subscriptionId: ${subscriptionId}`,
 			);
 		}
-	} catch (error: any) {
+	} catch (error: unknown) {
 		ctx.context.logger.error(`Chargebee webhook failed. Error: ${error}`);
 	}
 }
@@ -458,7 +470,13 @@ export async function onSubscriptionComplete(
 			return;
 		}
 
-		const primaryItem = subscriptionItems[0]!;
+		const primaryItem = subscriptionItems[0];
+		if (!primaryItem) {
+			ctx.context.logger.warn(
+				`Chargebee webhook warning: Subscription ${subscription.id} has no valid items`,
+			);
+			return;
+		}
 		const itemPriceId = primaryItem.item_price_id;
 
 		const subscriptionOptions = options.subscription as SubscriptionOptions;
@@ -527,7 +545,10 @@ export async function onSubscriptionComplete(
 		ctx.context.logger.info(
 			`Chargebee webhook: Subscription ${subscription.id} completed successfully`,
 		);
-	} catch (e: any) {
-		ctx.context.logger.error(`Chargebee webhook failed. Error: ${e.message}`);
+	} catch (e: unknown) {
+		const errorMessage = e instanceof Error ? e.message : String(e);
+		ctx.context.logger.error(
+			`Chargebee webhook failed. Error: ${errorMessage}`,
+		);
 	}
 }

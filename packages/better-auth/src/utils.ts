@@ -83,13 +83,14 @@ export function getReferenceId(
 	if (type === "organization") {
 		if (!options.organization?.enabled) {
 			throw new APIError("BAD_REQUEST", {
-				message: CHARGEBEE_ERROR_CODES.ORGANIZATION_SUBSCRIPTION_NOT_ENABLED,
+				message:
+					CHARGEBEE_ERROR_CODES.ORGANIZATION_SUBSCRIPTION_NOT_ENABLED.message,
 			});
 		}
 
 		if (!session.activeOrganizationId) {
 			throw new APIError("BAD_REQUEST", {
-				message: CHARGEBEE_ERROR_CODES.ORGANIZATION_NOT_FOUND,
+				message: CHARGEBEE_ERROR_CODES.ORGANIZATION_NOT_FOUND.message,
 			});
 		}
 		return session.activeOrganizationId;

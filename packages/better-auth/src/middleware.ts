@@ -31,7 +31,7 @@ export const referenceMiddleware = (
 		const ctxSession = ctx.context.session as ChargebeeCtxSession;
 		if (!ctxSession) {
 			throw new APIError("UNAUTHORIZED", {
-				message: CHARGEBEE_ERROR_CODES.UNAUTHORIZED_REFERENCE,
+				message: CHARGEBEE_ERROR_CODES.UNAUTHORIZED_REFERENCE.message,
 			});
 		}
 
@@ -55,7 +55,7 @@ export const referenceMiddleware = (
 				explicitReferenceId || ctxSession.session.activeOrganizationId;
 			if (!referenceId) {
 				throw new APIError("BAD_REQUEST", {
-					message: CHARGEBEE_ERROR_CODES.ORGANIZATION_NOT_FOUND,
+					message: CHARGEBEE_ERROR_CODES.ORGANIZATION_NOT_FOUND.message,
 				});
 			}
 			const isAuthorized = await subscriptionOptions.authorizeReference(
@@ -69,7 +69,7 @@ export const referenceMiddleware = (
 			);
 			if (!isAuthorized) {
 				throw new APIError("UNAUTHORIZED", {
-					message: CHARGEBEE_ERROR_CODES.UNAUTHORIZED_REFERENCE,
+					message: CHARGEBEE_ERROR_CODES.UNAUTHORIZED_REFERENCE.message,
 				});
 			}
 			return;
@@ -104,7 +104,7 @@ export const referenceMiddleware = (
 		);
 		if (!isAuthorized) {
 			throw new APIError("UNAUTHORIZED", {
-				message: CHARGEBEE_ERROR_CODES.UNAUTHORIZED_REFERENCE,
+				message: CHARGEBEE_ERROR_CODES.UNAUTHORIZED_REFERENCE.message,
 			});
 		}
 	});

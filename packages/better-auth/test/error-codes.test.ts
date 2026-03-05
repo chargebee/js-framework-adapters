@@ -16,14 +16,22 @@ describe("error codes", () => {
 		expect(CHARGEBEE_ERROR_CODES.UNABLE_TO_CREATE_CUSTOMER).toBeDefined();
 	});
 
-	it("should be strings", () => {
-		expect(typeof CHARGEBEE_ERROR_CODES.ALREADY_SUBSCRIBED).toBe("string");
-		expect(typeof CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND).toBe("string");
-		expect(typeof CHARGEBEE_ERROR_CODES.PLAN_NOT_FOUND).toBe("string");
+	it("should be objects with code and message", () => {
+		expect(typeof CHARGEBEE_ERROR_CODES.ALREADY_SUBSCRIBED).toBe("object");
+		expect(CHARGEBEE_ERROR_CODES.ALREADY_SUBSCRIBED.code).toBe("ALREADY_SUBSCRIBED");
+		expect(typeof CHARGEBEE_ERROR_CODES.ALREADY_SUBSCRIBED.message).toBe("string");
+
+		expect(typeof CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND).toBe("object");
+		expect(CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND.code).toBe("SUBSCRIPTION_NOT_FOUND");
+		expect(typeof CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND.message).toBe("string");
+
+		expect(typeof CHARGEBEE_ERROR_CODES.PLAN_NOT_FOUND).toBe("object");
+		expect(CHARGEBEE_ERROR_CODES.PLAN_NOT_FOUND.code).toBe("PLAN_NOT_FOUND");
+		expect(typeof CHARGEBEE_ERROR_CODES.PLAN_NOT_FOUND.message).toBe("string");
 	});
 
 	it("should have unique values", () => {
-		const codes = Object.values(CHARGEBEE_ERROR_CODES);
+		const codes = Object.values(CHARGEBEE_ERROR_CODES).map(c => c.code);
 		const uniqueCodes = new Set(codes);
 		expect(codes.length).toBe(uniqueCodes.size);
 	});
@@ -31,7 +39,7 @@ describe("error codes", () => {
 	it("should have descriptive messages", () => {
 		const codes = Object.values(CHARGEBEE_ERROR_CODES);
 		for (const code of codes) {
-			expect(code.length).toBeGreaterThan(10);
+			expect(code.message.length).toBeGreaterThan(10);
 		}
 	});
 });

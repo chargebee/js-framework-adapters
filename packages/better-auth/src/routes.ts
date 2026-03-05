@@ -46,7 +46,7 @@ export function getWebhookEndpoint(options: ChargebeeOptions) {
 					},
 					logger: ctx.context.logger,
 				},
-				ctx,
+				ctx as any,
 			);
 
 			// Handle the webhook request using the typed handler
@@ -117,7 +117,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 			// Email verification check
 			if (!user.emailVerified && subscriptionOptions.requireEmailVerification) {
 				throw new APIError("BAD_REQUEST", {
-					message: CHARGEBEE_ERROR_CODES.EMAIL_VERIFICATION_REQUIRED,
+					message: CHARGEBEE_ERROR_CODES.EMAIL_VERIFICATION_REQUIRED.message,
 				});
 			}
 
@@ -133,7 +133,12 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 			}
 
 			// Get the plan for the first item price ID to check for trial
-			const primaryItemPriceId = itemPriceIds[0]!;
+			const primaryItemPriceId = itemPriceIds[0];
+			if (!primaryItemPriceId) {
+				throw new APIError("BAD_REQUEST", {
+					message: "Invalid item price ID",
+				});
+			}
 			const plan = await getPlanByItemPriceId(options, primaryItemPriceId);
 
 			// If subscriptionId is provided, find that specific subscription
@@ -151,7 +156,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 
 			if (ctx.body.subscriptionId && !subscriptionToUpdate) {
 				throw new APIError("BAD_REQUEST", {
-					message: CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND,
+					message: CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND.message,
 				});
 			}
 
@@ -161,7 +166,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 				subscriptionToUpdate.referenceId !== referenceId
 			) {
 				throw new APIError("BAD_REQUEST", {
-					message: CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND,
+					message: CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND.message,
 				});
 			}
 
@@ -182,7 +187,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 
 					if (!org) {
 						throw new APIError("BAD_REQUEST", {
-							message: CHARGEBEE_ERROR_CODES.ORGANIZATION_NOT_FOUND,
+							message: CHARGEBEE_ERROR_CODES.ORGANIZATION_NOT_FOUND.message,
 						});
 					}
 
@@ -249,7 +254,8 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 						} catch (e) {
 							ctx.context.logger.error("Error creating customer", e);
 							throw new APIError("BAD_REQUEST", {
-								message: CHARGEBEE_ERROR_CODES.UNABLE_TO_CREATE_CUSTOMER,
+								message:
+									CHARGEBEE_ERROR_CODES.UNABLE_TO_CREATE_CUSTOMER.message,
 							});
 						}
 					}
@@ -296,7 +302,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 					} catch (e) {
 						ctx.context.logger.error("Error creating customer", e);
 						throw new APIError("BAD_REQUEST", {
-							message: CHARGEBEE_ERROR_CODES.UNABLE_TO_CREATE_CUSTOMER,
+							message: CHARGEBEE_ERROR_CODES.UNABLE_TO_CREATE_CUSTOMER.message,
 						});
 					}
 				}
@@ -378,7 +384,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 
 			if (isAlreadySubscribed) {
 				throw new APIError("BAD_REQUEST", {
-					message: CHARGEBEE_ERROR_CODES.ALREADY_SUBSCRIBED,
+					message: CHARGEBEE_ERROR_CODES.ALREADY_SUBSCRIBED.message,
 				});
 			}
 
@@ -445,7 +451,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 			if (!subscription) {
 				ctx.context.logger.error("Subscription ID not found");
 				throw new APIError("NOT_FOUND", {
-					message: CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND,
+					message: CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND.message,
 				});
 			}
 
@@ -473,7 +479,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 			}
 
 			// Check if upgrading existing subscription or creating new one
-			const hasActiveSubscription = activeSubscription && activeSubscription.id;
+			const hasActiveSubscription = activeSubscription?.id;
 
 			try {
 				let result: { hosted_page: { url?: string; id?: string } };
@@ -775,7 +781,7 @@ export function createPortalSession(options: ChargebeeOptions) {
 
 					if (!org) {
 						throw new APIError("BAD_REQUEST", {
-							message: CHARGEBEE_ERROR_CODES.ORGANIZATION_NOT_FOUND,
+							message: CHARGEBEE_ERROR_CODES.ORGANIZATION_NOT_FOUND.message,
 						});
 					}
 
@@ -790,7 +796,7 @@ export function createPortalSession(options: ChargebeeOptions) {
 
 			if (!customerId) {
 				throw new APIError("BAD_REQUEST", {
-					message: CHARGEBEE_ERROR_CODES.CUSTOMER_NOT_FOUND,
+					message: CHARGEBEE_ERROR_CODES.CUSTOMER_NOT_FOUND.message,
 				});
 			}
 
@@ -881,7 +887,7 @@ export function cancelSubscription(options: ChargebeeOptions) {
 
 			if (!subscription || !subscription.chargebeeCustomerId) {
 				throw new APIError("BAD_REQUEST", {
-					message: CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND,
+					message: CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND.message,
 				});
 			}
 
@@ -913,7 +919,7 @@ export function cancelSubscription(options: ChargebeeOptions) {
 					],
 				});
 				throw new APIError("BAD_REQUEST", {
-					message: CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND,
+					message: CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND.message,
 				});
 			}
 
@@ -923,7 +929,7 @@ export function cancelSubscription(options: ChargebeeOptions) {
 
 			if (!activeSubscription) {
 				throw new APIError("BAD_REQUEST", {
-					message: CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND,
+					message: CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND.message,
 				});
 			}
 
