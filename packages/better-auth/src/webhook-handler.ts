@@ -11,12 +11,7 @@ import {
 	onSubscriptionDeleted,
 	onSubscriptionUpdated,
 } from "./hooks";
-import type {
-	ChargebeeOptions,
-	Logger,
-	Subscription,
-	SubscriptionOptions,
-} from "./types";
+import type { ChargebeeOptions, Logger, Subscription } from "./types";
 
 /**
  * Context object that wraps better-auth context for webhook handlers

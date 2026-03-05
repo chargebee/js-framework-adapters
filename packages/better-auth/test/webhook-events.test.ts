@@ -1,3 +1,4 @@
+import type { GenericEndpointContext } from "@better-auth/core";
 import type Chargebee from "chargebee";
 import {
 	WebhookAuthenticationError,
@@ -30,7 +31,7 @@ describe("webhook handler - event processing", () => {
 			adapter: mockContext.adapter,
 			logger: mockContext.logger,
 		},
-	} as any;
+	} as GenericEndpointContext;
 
 	let mockHandlerInstance: {
 		on: ReturnType<typeof vi.fn>;

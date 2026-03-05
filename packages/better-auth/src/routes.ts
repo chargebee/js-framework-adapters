@@ -133,7 +133,12 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 			}
 
 			// Get the plan for the first item price ID to check for trial
-			const primaryItemPriceId = itemPriceIds[0]!;
+			const primaryItemPriceId = itemPriceIds[0];
+			if (!primaryItemPriceId) {
+				throw new APIError("BAD_REQUEST", {
+					message: "Invalid item price ID",
+				});
+			}
 			const plan = await getPlanByItemPriceId(options, primaryItemPriceId);
 
 			// If subscriptionId is provided, find that specific subscription
@@ -474,7 +479,7 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 			}
 
 			// Check if upgrading existing subscription or creating new one
-			const hasActiveSubscription = activeSubscription && activeSubscription.id;
+			const hasActiveSubscription = activeSubscription?.id;
 
 			try {
 				let result: { hosted_page: { url?: string; id?: string } };

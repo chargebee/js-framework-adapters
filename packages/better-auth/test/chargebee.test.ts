@@ -7,7 +7,6 @@ import { chargebee } from "../src";
 import { chargebeeClient } from "../src/client";
 import { CHARGEBEE_ERROR_CODES } from "../src/error-codes";
 import { customerMetadata } from "../src/metadata";
-import type { ChargebeeOptions, Subscription } from "../src/types";
 
 // Mock Chargebee client for tests
 const createMockChargebeeClient = (): Chargebee => {

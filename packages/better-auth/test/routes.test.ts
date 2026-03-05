@@ -1,7 +1,6 @@
-import { APIError } from "better-auth/api";
+
 import type Chargebee from "chargebee";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { CHARGEBEE_ERROR_CODES } from "../src/error-codes";
 import {
 	cancelSubscription,
 	cancelSubscriptionCallback,
