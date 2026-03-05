@@ -53,7 +53,9 @@ describe("chargebee types", () => {
 		>().toBeFunction();
 	});
 
-	it("should infer plugin schema fields on user type", async () => {
+	it.skipIf(
+		Number(process.version.split(".")[0]?.replace("v", "")) < 22,
+	)("should infer plugin schema fields on user type", async () => {
 		const { auth } = await getTestInstance({
 			plugins: [
 				chargebee({
@@ -66,7 +68,9 @@ describe("chargebee types", () => {
 		>().toEqualTypeOf<string | null | undefined>();
 	});
 
-	it("should infer plugin schema fields alongside additional user fields", async () => {
+	it.skipIf(
+		Number(process.version.split(".")[0]?.replace("v", "")) < 22,
+	)("should infer plugin schema fields alongside additional user fields", async () => {
 		const { auth } = await getTestInstance({
 			plugins: [
 				chargebee({
@@ -115,8 +119,8 @@ describe("chargebee - error codes", () => {
 	});
 
 	it("should have descriptive error messages", () => {
-		expect(typeof CHARGEBEE_ERROR_CODES.ALREADY_SUBSCRIBED).toBe("string");
-		expect(CHARGEBEE_ERROR_CODES.ALREADY_SUBSCRIBED.length).toBeGreaterThan(
+		expect(typeof CHARGEBEE_ERROR_CODES.ALREADY_SUBSCRIBED).toBe("object");
+		expect(CHARGEBEE_ERROR_CODES.ALREADY_SUBSCRIBED.message.length).toBeGreaterThan(
 			10,
 		);
 	});

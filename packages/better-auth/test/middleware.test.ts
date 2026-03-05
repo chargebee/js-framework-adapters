@@ -27,26 +27,26 @@ describe("middleware - referenceMiddleware", () => {
 			enabled: true,
 		} as SubscriptionOptions;
 
-		const middleware = referenceMiddleware(
-			subscriptionOptions,
-			"upgrade-subscription",
-		);
-		const mockCtx = {
-			context: {
-				session: null,
-				logger: mockLogger,
-			},
-			body: {},
-			query: {},
-		} as never;
+	const middleware = referenceMiddleware(
+		subscriptionOptions,
+		"upgrade-subscription",
+	);
+	const mockCtx = {
+		context: {
+			session: null,
+			logger: mockLogger,
+		},
+		body: {},
+		query: {},
+	} as never;
 
-		await expect(middleware(mockCtx)).rejects.toThrow(APIError);
-		await expect(middleware(mockCtx)).rejects.toMatchObject({
-			message: CHARGEBEE_ERROR_CODES.UNAUTHORIZED_REFERENCE,
-		});
+	await expect(middleware(mockCtx)).rejects.toThrow(APIError);
+	await expect(middleware(mockCtx)).rejects.toMatchObject({
+		message: CHARGEBEE_ERROR_CODES.UNAUTHORIZED_REFERENCE.message,
 	});
+});
 
-	it("should pass for user subscription without explicit referenceId", async () => {
+it("should pass for user subscription without explicit referenceId", async () => {
 		const subscriptionOptions = {
 			enabled: true,
 		} as SubscriptionOptions;
@@ -174,16 +174,16 @@ describe("middleware - referenceMiddleware", () => {
 				logger: mockLogger,
 			},
 			body: { referenceId: "different_user_456" },
-			query: {},
-		} as never;
+			query: {		},
+	} as never;
 
-		await expect(middleware(mockCtx)).rejects.toThrow(APIError);
-		await expect(middleware(mockCtx)).rejects.toMatchObject({
-			message: CHARGEBEE_ERROR_CODES.UNAUTHORIZED_REFERENCE,
-		});
+	await expect(middleware(mockCtx)).rejects.toThrow(APIError);
+	await expect(middleware(mockCtx)).rejects.toMatchObject({
+		message: CHARGEBEE_ERROR_CODES.UNAUTHORIZED_REFERENCE.message,
 	});
+});
 
-	it("should require authorizeReference for organization subscriptions", async () => {
+it("should require authorizeReference for organization subscriptions", async () => {
 		const subscriptionOptions = {
 			enabled: true,
 		} as SubscriptionOptions;
@@ -299,16 +299,16 @@ describe("middleware - referenceMiddleware", () => {
 				logger: mockLogger,
 			},
 			body: { customerType: "organization" },
-			query: {},
-		} as never;
+			query: {		},
+	} as never;
 
-		await expect(middleware(mockCtx)).rejects.toThrow(APIError);
-		await expect(middleware(mockCtx)).rejects.toMatchObject({
-			message: CHARGEBEE_ERROR_CODES.ORGANIZATION_NOT_FOUND,
-		});
+	await expect(middleware(mockCtx)).rejects.toThrow(APIError);
+	await expect(middleware(mockCtx)).rejects.toMatchObject({
+		message: CHARGEBEE_ERROR_CODES.ORGANIZATION_NOT_FOUND.message,
 	});
+});
 
-	it("should read customerType from query params", async () => {
+it("should read customerType from query params", async () => {
 		const subscriptionOptions = {
 			enabled: true,
 			authorizeReference: vi.fn().mockResolvedValue(true),
