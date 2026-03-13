@@ -345,6 +345,8 @@ describe("database hooks", () => {
 				"cust_123",
 				{
 					email: "newemail@example.com",
+					first_name: "Test",
+					last_name: "User",
 				},
 			);
 		});
@@ -407,7 +409,7 @@ describe("database hooks", () => {
 				.mockResolvedValue({ subscription: { id: "sub_cb_123" } });
 
 			const initResult = plugin.init(ctx as never);
-			const hook = initResult.options.databaseHooks?.delete?.before;
+			const hook = initResult.options.databaseHooks?.user?.delete?.before;
 
 			const user: User & WithChargebeeCustomerId = {
 				id: "user_123",
@@ -488,7 +490,7 @@ describe("database hooks", () => {
 				.mockRejectedValue(new Error("Already cancelled"));
 
 			const initResult = plugin.init(ctx as never);
-			const hook = initResult.options.databaseHooks?.delete?.before;
+			const hook = initResult.options.databaseHooks?.user?.delete?.before;
 
 			const user: User & WithChargebeeCustomerId = {
 				id: "user_123",
@@ -531,7 +533,7 @@ describe("database hooks", () => {
 			mockAdapter.deleteMany = vi.fn().mockResolvedValue(undefined);
 
 			const initResult = plugin.init(ctx as never);
-			const hook = initResult.options.databaseHooks?.delete?.before;
+			const hook = initResult.options.databaseHooks?.user?.delete?.before;
 
 			const user: User & WithChargebeeCustomerId = {
 				id: "user_123",
@@ -565,7 +567,7 @@ describe("database hooks", () => {
 				.mockRejectedValue(new Error("Database error"));
 
 			const initResult = plugin.init(ctx as never);
-			const hook = initResult.options.databaseHooks?.delete?.before;
+			const hook = initResult.options.databaseHooks?.user?.delete?.before;
 
 			const user: User & WithChargebeeCustomerId = {
 				id: "user_123",

@@ -1,3 +1,4 @@
+import type { GenericEndpointContext } from "@better-auth/core";
 import type Chargebee from "chargebee";
 import type { WebhookEvent, WebhookEventType } from "chargebee";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -51,12 +52,19 @@ describe("webhook handler", () => {
 		webhookPassword: "test_pass",
 	};
 
+	const mockEndpointCtx = {
+		context: {
+			adapter: mockContext.adapter,
+			logger: mockContext.logger,
+		},
+	} as GenericEndpointContext;
+
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});
 
 	it("should create webhook handler with basic auth", () => {
-		const _handler = createWebhookHandler(mockOptions, mockContext);
+		const _handler = createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 	});
 
@@ -67,7 +75,7 @@ describe("webhook handler", () => {
 			webhookPassword: undefined,
 		};
 
-		const _handler = createWebhookHandler(optionsWithoutAuth, mockContext);
+		const _handler = createWebhookHandler(optionsWithoutAuth, mockContext, mockEndpointCtx);
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalledWith({
 			requestValidator: undefined,
 		});
@@ -124,7 +132,7 @@ describe("webhook handler", () => {
 
 		// Simulate the handler processing the event
 		// Note: This is a simplified test - in reality, the handler would be called via handle()
-		const _handler = createWebhookHandler(mockOptions, mockContext);
+		const _handler = createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 		// Verify handler setup
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
@@ -165,7 +173,7 @@ describe("webhook handler", () => {
 
 		mockContext.adapter.update = vi.fn().mockResolvedValue({});
 
-		const _handler = createWebhookHandler(mockOptions, mockContext);
+		const _handler = createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 	});
@@ -203,13 +211,13 @@ describe("webhook handler", () => {
 		mockContext.adapter.deleteMany = vi.fn().mockResolvedValue({});
 		mockContext.adapter.update = vi.fn().mockResolvedValue({});
 
-		const _handler = createWebhookHandler(mockOptions, mockContext);
+		const _handler = createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 	});
 
 	it("should log authentication errors", () => {
-		const _handler = createWebhookHandler(mockOptions, mockContext);
+		const _handler = createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 		// Verify handler was created
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
@@ -223,7 +231,7 @@ describe("webhook handler", () => {
 	});
 
 	it("should handle unhandled events gracefully", () => {
-		const _handler = createWebhookHandler(mockOptions, mockContext);
+		const _handler = createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 
@@ -242,7 +250,7 @@ describe("webhook handler", () => {
 		mockContext.adapter.create = vi.fn().mockResolvedValue({});
 		mockContext.adapter.update = vi.fn().mockResolvedValue({});
 
-		const _handler = createWebhookHandler(mockOptions, mockContext);
+		const _handler = createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 	});
@@ -250,7 +258,7 @@ describe("webhook handler", () => {
 	it("should handle missing subscription in webhook", () => {
 		mockContext.adapter.findOne = vi.fn().mockResolvedValue(null);
 
-		const _handler = createWebhookHandler(mockOptions, mockContext);
+		const _handler = createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 	});
@@ -265,7 +273,7 @@ describe("webhook handler", () => {
 		mockContext.adapter.deleteMany = vi.fn().mockResolvedValue({});
 		mockContext.adapter.create = vi.fn().mockResolvedValue({});
 
-		const _handler = createWebhookHandler(mockOptions, mockContext);
+		const _handler = createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 	});
@@ -289,7 +297,7 @@ describe("webhook handler", () => {
 
 		mockContext.adapter.update = vi.fn().mockResolvedValue({});
 
-		const _handler = createWebhookHandler(optionsWithCallback, mockContext);
+		const _handler = createWebhookHandler(optionsWithCallback, mockContext, mockEndpointCtx);
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 	});
@@ -305,13 +313,13 @@ describe("webhook handler", () => {
 		mockContext.adapter.findMany = vi.fn().mockResolvedValue([]);
 		mockContext.adapter.update = vi.fn().mockResolvedValue({});
 
-		const _handler = createWebhookHandler(optionsWithOrg, mockContext);
+		const _handler = createWebhookHandler(optionsWithOrg, mockContext, mockEndpointCtx);
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 	});
 
 	it("should handle subscription_activated event", () => {
-		const _handler = createWebhookHandler(mockOptions, mockContext);
+		const _handler = createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 
@@ -321,38 +329,38 @@ describe("webhook handler", () => {
 	});
 
 	it("should handle subscription_changed event", () => {
-		const _handler = createWebhookHandler(mockOptions, mockContext);
+		const _handler = createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 	});
 
 	it("should handle subscription_renewed event", () => {
-		const _handler = createWebhookHandler(mockOptions, mockContext);
+		const _handler = createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 	});
 
 	it("should handle subscription_started event", () => {
-		const _handler = createWebhookHandler(mockOptions, mockContext);
+		const _handler = createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 	});
 
 	it("should handle subscription_scheduled_cancellation_removed event", () => {
-		const _handler = createWebhookHandler(mockOptions, mockContext);
+		const _handler = createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 	});
 
 	it("should handle error event with WebhookAuthenticationError", () => {
-		const _handler = createWebhookHandler(mockOptions, mockContext);
+		const _handler = createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 		expect(mockContext.logger.warn).toBeDefined();
 	});
 
 	it("should handle error event with generic error", () => {
-		const _handler = createWebhookHandler(mockOptions, mockContext);
+		const _handler = createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 		expect(mockContext.logger.error).toBeDefined();
@@ -361,7 +369,7 @@ describe("webhook handler", () => {
 	it("should handle subscription without metadata", () => {
 		mockContext.adapter.findOne = vi.fn().mockResolvedValue(null);
 
-		const _handler = createWebhookHandler(mockOptions, mockContext);
+		const _handler = createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 	});
@@ -377,7 +385,7 @@ describe("webhook handler", () => {
 		mockContext.adapter.findMany = vi.fn().mockResolvedValue([]);
 		mockContext.adapter.update = vi.fn().mockResolvedValue({});
 
-		const _handler = createWebhookHandler(optionsWithOrg, mockContext);
+		const _handler = createWebhookHandler(optionsWithOrg, mockContext, mockEndpointCtx);
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 	});
@@ -395,13 +403,13 @@ describe("webhook handler", () => {
 		});
 		mockContext.adapter.update = vi.fn().mockResolvedValue({});
 
-		const _handler = createWebhookHandler(mockOptions, mockContext);
+		const _handler = createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 	});
 
 	it("should handle webhook with response undefined", () => {
-		const _handler = createWebhookHandler(mockOptions, mockContext);
+		const _handler = createWebhookHandler(mockOptions, mockContext, mockEndpointCtx);
 
 		expect(mockChargebee.webhooks.createHandler).toHaveBeenCalled();
 	});

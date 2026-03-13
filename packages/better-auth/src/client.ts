@@ -32,8 +32,11 @@ export const chargebeeClient = <
 			>
 		>,
 		pathMethods: {
+			"/subscription/create": "POST",
+			"/subscription/update": "POST",
 			"/subscription/cancel": "POST",
 			"/subscription/portal": "POST",
+			"/subscription/list": "GET",
 		},
 	} satisfies BetterAuthClientPlugin;
 

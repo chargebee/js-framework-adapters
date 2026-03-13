@@ -126,6 +126,11 @@ describe("utils - isActiveOrTrialing", () => {
 		expect(isActiveOrTrialing(subscription)).toBe(true);
 	});
 
+	it("should return true for non_renewing subscription", () => {
+		const subscription = { status: "non_renewing" } as Subscription;
+		expect(isActiveOrTrialing(subscription)).toBe(true);
+	});
+
 	it("should return false for cancelled subscription", () => {
 		const subscription = { status: "cancelled" } as Subscription;
 		expect(isActiveOrTrialing(subscription)).toBe(false);

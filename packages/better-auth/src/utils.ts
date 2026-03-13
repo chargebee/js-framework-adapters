@@ -53,7 +53,11 @@ export async function getPlanByItemPriceId(
  * Check if a subscription is active or trialing
  */
 export function isActiveOrTrialing(subscription: Subscription): boolean {
-	return subscription.status === "active" || subscription.status === "in_trial";
+	return (
+		subscription.status === "active" ||
+		subscription.status === "in_trial" ||
+		subscription.status === "non_renewing"
+	);
 }
 
 /**

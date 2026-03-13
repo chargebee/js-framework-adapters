@@ -12,11 +12,11 @@ import type {
 	ChargebeeOptions,
 	Subscription,
 	SubscriptionOptions,
-	WebhookEvent,
 	WithChargebeeCustomerId,
 } from "./types";
 import {
 	getPlanByItemPriceId,
+	getPlans,
 	getReferenceId,
 	getUrl,
 	isActiveOrTrialing,
@@ -49,6 +49,9 @@ export function getWebhookEndpoint(options: ChargebeeOptions) {
 				ctx as any,
 			);
 
+			// Let user register custom event listeners on the handler
+			options.webhookHandler?.(handler);
+
 			// Handle the webhook request using the typed handler
 			await handler.handle({
 				body: ctx.body,
@@ -59,26 +62,397 @@ export function getWebhookEndpoint(options: ChargebeeOptions) {
 				response: undefined, // We'll handle the response ourselves
 			});
 
-			// Call user-defined event handler if provided
-			if (options.onEvent) {
-				try {
-					await options.onEvent(ctx.body as WebhookEvent);
-				} catch (error) {
-					ctx.context.logger.error("Error in custom onEvent handler:", error);
-				}
-			}
-
 			return ctx.json({ received: true });
 		},
 	);
 }
 
-export function upgradeSubscription(options: ChargebeeOptions) {
+/**
+ * Shared helper to find or create a Chargebee customer for a user or organization.
+ * Returns the Chargebee customer ID.
+ */
+async function getOrCreateCustomerId(
+	ctx: any,
+	options: ChargebeeOptions,
+	customerType: "user" | "organization",
+	referenceId: string,
+	metadata?: Record<string, unknown>,
+	existingCustomerId?: string | null,
+): Promise<string> {
+	const cb = options.chargebeeClient;
+	const { user } = ctx.context.session;
+
+	if (existingCustomerId) return existingCustomerId;
+
+	if (customerType === "organization") {
+		const org = (await ctx.context.adapter.findOne({
+			model: "organization",
+			where: [{ field: "id", value: referenceId }],
+		})) as (Organization & WithChargebeeCustomerId) | null;
+
+		if (!org) {
+			throw new APIError("BAD_REQUEST", {
+				message: CHARGEBEE_ERROR_CODES.ORGANIZATION_NOT_FOUND.message,
+			});
+		}
+
+		if (org.chargebeeCustomerId) return org.chargebeeCustomerId;
+
+		try {
+			let extraCreateParams: Record<string, unknown> = {};
+			if (options.organization?.getCustomerCreateParams) {
+				extraCreateParams = await options.organization.getCustomerCreateParams(
+					org,
+					ctx,
+				);
+			}
+
+			const customerResult = await cb.customer.create({
+				first_name: org.name,
+				meta_data: {
+					organizationId: org.id,
+					customerType: "organization",
+					...metadata,
+				},
+				...extraCreateParams,
+			});
+
+			const chargebeeCustomer = customerResult.customer;
+
+			// Re-read org to guard against concurrent requests
+			const freshOrg = (await ctx.context.adapter.findOne({
+				model: "organization",
+				where: [{ field: "id", value: org.id }],
+			})) as (Organization & WithChargebeeCustomerId) | null;
+
+			if (freshOrg?.chargebeeCustomerId) {
+				try {
+					await cb.customer.delete(chargebeeCustomer.id);
+				} catch {
+					ctx.context.logger.warn(
+						`Failed to clean up duplicate Chargebee customer ${chargebeeCustomer.id}`,
+					);
+				}
+				return freshOrg.chargebeeCustomerId;
+			}
+
+			await ctx.context.adapter.update({
+				model: "organization",
+				update: { chargebeeCustomerId: chargebeeCustomer.id },
+				where: [{ field: "id", value: org.id }],
+			});
+
+			await options.organization?.onCustomerCreate?.(
+				{
+					chargebeeCustomer,
+					organization: {
+						...org,
+						chargebeeCustomerId: chargebeeCustomer.id,
+					},
+				},
+				ctx,
+			);
+
+			return chargebeeCustomer.id;
+		} catch (e) {
+			ctx.context.logger.error("Error creating customer", e);
+			throw new APIError("BAD_REQUEST", {
+				message: CHARGEBEE_ERROR_CODES.UNABLE_TO_CREATE_CUSTOMER.message,
+			});
+		}
+	} else {
+		// User customer
+		if (user.chargebeeCustomerId) return user.chargebeeCustomerId;
+
+		try {
+			const customerList = await cb.customer.list({
+				email: { is: user.email },
+				limit: 1,
+			});
+
+			let chargebeeCustomer = customerList?.list?.find(
+				(item) => item.customer.meta_data?.customerType !== "organization",
+			)?.customer;
+
+			if (!chargebeeCustomer) {
+				const customerResult = await cb.customer.create({
+					email: user.email,
+					first_name: user.name?.split(" ")[0],
+					last_name: user.name?.split(" ").slice(1).join(" "),
+					meta_data: {
+						userId: user.id,
+						customerType: "user",
+						...metadata,
+					},
+				});
+				chargebeeCustomer = customerResult.customer;
+			}
+
+			// Re-read user to guard against concurrent requests
+			const freshUser = (await ctx.context.adapter.findOne({
+				model: "user",
+				where: [{ field: "id", value: user.id }],
+			})) as ({ id: string } & WithChargebeeCustomerId) | null;
+
+			if (freshUser?.chargebeeCustomerId) {
+				try {
+					await cb.customer.delete(chargebeeCustomer.id);
+				} catch {
+					ctx.context.logger.warn(
+						`Failed to clean up duplicate Chargebee customer ${chargebeeCustomer.id}`,
+					);
+				}
+				return freshUser.chargebeeCustomerId;
+			}
+
+			await ctx.context.adapter.update({
+				model: "user",
+				update: { chargebeeCustomerId: chargebeeCustomer.id },
+				where: [{ field: "id", value: user.id }],
+			});
+
+			return chargebeeCustomer.id;
+		} catch (e) {
+			ctx.context.logger.error("Error creating customer", e);
+			throw new APIError("BAD_REQUEST", {
+				message: CHARGEBEE_ERROR_CODES.UNABLE_TO_CREATE_CUSTOMER.message,
+			});
+		}
+	}
+}
+
+/**
+ * Create a new subscription endpoint.
+ * Uses Chargebee checkoutNewForItems to initiate a brand-new subscription.
+ */
+export function createSubscription(options: ChargebeeOptions) {
 	const cb = options.chargebeeClient;
 	const subscriptionOptions = options.subscription as SubscriptionOptions;
 
 	return createAuthEndpoint(
-		"/subscription/upgrade",
+		"/subscription/create",
+		{
+			method: "POST",
+			body: z.object({
+				itemPriceId: z.union([z.string(), z.array(z.string())]),
+				successUrl: z.string(),
+				cancelUrl: z.string(),
+				returnUrl: z.string().optional(),
+				referenceId: z.string().optional(),
+				customerType: z.enum(["user", "organization"]).optional(),
+				seats: z.number().optional(),
+				metadata: z.record(z.string(), z.unknown()).optional(),
+				disableRedirect: z.boolean().optional(),
+				trialEnd: z.number().optional(),
+			}),
+			metadata: {
+				openapi: {
+					operationId: "createSubscription",
+				},
+			},
+			use: [
+				sessionMiddleware,
+				referenceMiddleware(subscriptionOptions, "create-subscription"),
+				originCheck((c) => {
+					return [c.body.successUrl as string, c.body.cancelUrl as string];
+				}),
+			],
+		},
+		async (ctx) => {
+			const { user, session } = ctx.context.session;
+			const customerType = ctx.body.customerType || "user";
+			const referenceId =
+				ctx.body.referenceId ||
+				getReferenceId(ctx.context.session, customerType, options);
+
+			// Email verification check
+			if (!user.emailVerified && subscriptionOptions.requireEmailVerification) {
+				throw new APIError("BAD_REQUEST", {
+					message: CHARGEBEE_ERROR_CODES.EMAIL_VERIFICATION_REQUIRED.message,
+				});
+			}
+
+			// Normalize itemPriceId to array
+			const itemPriceIds = Array.isArray(ctx.body.itemPriceId)
+				? ctx.body.itemPriceId
+				: [ctx.body.itemPriceId];
+
+			if (!itemPriceIds.length) {
+				throw new APIError("BAD_REQUEST", {
+					message: "At least one item price ID is required",
+				});
+			}
+
+			const primaryItemPriceId = itemPriceIds[0];
+			if (!primaryItemPriceId) {
+				throw new APIError("BAD_REQUEST", {
+					message: "Invalid item price ID",
+				});
+			}
+
+			const plan = await getPlanByItemPriceId(options, primaryItemPriceId);
+
+			// Find or create customer
+			const customerId = await getOrCreateCustomerId(
+				ctx,
+				options,
+				customerType,
+				referenceId,
+				ctx.body.metadata,
+			);
+
+			// Check if user already has an active subscription
+			const existingSubscriptions =
+				await ctx.context.adapter.findMany<Subscription>({
+					model: "subscription",
+					where: [{ field: "referenceId", value: referenceId }],
+				});
+
+			const activeOrTrialingSubscription = existingSubscriptions.find((sub) =>
+				isActiveOrTrialing(sub),
+			);
+
+			if (activeOrTrialingSubscription) {
+				throw new APIError("BAD_REQUEST", {
+					message: CHARGEBEE_ERROR_CODES.ALREADY_SUBSCRIBED.message,
+				});
+			}
+
+			// Find or create DB subscription record
+			const futureSubscription = existingSubscriptions.find(
+				(sub) => sub.status === "future",
+			);
+
+			let subscription: Subscription | undefined = futureSubscription;
+
+			if (futureSubscription) {
+				const updated = await ctx.context.adapter.update({
+					model: "subscription",
+					update: {
+						seats: ctx.body.seats || 1,
+						updatedAt: new Date(),
+					},
+					where: [{ field: "id", value: futureSubscription.id }],
+				});
+				subscription = (updated as Subscription) || futureSubscription;
+			} else {
+				subscription = await ctx.context.adapter.create({
+					model: "subscription",
+					data: {
+						chargebeeCustomerId: customerId,
+						status: "future",
+						referenceId,
+						seats: ctx.body.seats || 1,
+					},
+				});
+			}
+
+			if (!subscription) {
+				ctx.context.logger.error("Subscription ID not found");
+				throw new APIError("NOT_FOUND", {
+					message: CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND.message,
+				});
+			}
+
+			// Get custom params
+			const params = ctx.request
+				? await subscriptionOptions.getHostedPageParams?.(
+						{ user, session, plan, subscription },
+						ctx.request,
+						ctx,
+					)
+				: undefined;
+
+			// Store pending subscription info in customer metadata
+			try {
+				await cb.customer.update(customerId, {
+					meta_data: {
+						pendingSubscriptionId: subscription.id,
+						pendingReferenceId: referenceId,
+						userId: user.id,
+					},
+				});
+			} catch (e) {
+				ctx.context.logger.warn("Failed to update customer metadata", e);
+			}
+
+			// Apply trial if configured
+			let trialEnd = ctx.body.trialEnd;
+			if (!trialEnd && plan?.freeTrial?.days) {
+				let applyTrial = true;
+
+				if (subscriptionOptions.preventDuplicateTrials) {
+					applyTrial = !existingSubscriptions.some(
+						(sub) => sub.trialStart != null,
+					);
+
+					if (!applyTrial) {
+						ctx.context.logger.info(
+							"User already had a trial, skipping duplicate trial",
+						);
+					}
+				}
+
+				if (applyTrial) {
+					const trialEndDate = new Date();
+					trialEndDate.setDate(trialEndDate.getDate() + plan.freeTrial.days);
+					trialEnd = Math.floor(trialEndDate.getTime() / 1000);
+					ctx.context.logger.info(
+						`Applying ${plan.freeTrial.days}-day trial (ends: ${trialEndDate.toISOString()})`,
+					);
+				}
+			}
+
+			try {
+				const newSubParams: Record<string, unknown> = {
+					subscription_items: itemPriceIds.map((id: string) => ({
+						item_price_id: id,
+						quantity: ctx.body.seats || 1,
+					})),
+					customer: { id: customerId },
+					...(trialEnd && {
+						subscription: {
+							trial_end: trialEnd,
+						},
+					}),
+					redirect_url: getUrl(
+						ctx,
+						`${ctx.context.baseURL}/subscription/success?callbackURL=${encodeURIComponent(
+							ctx.body.successUrl,
+						)}&subscriptionId=${encodeURIComponent(subscription.id)}`,
+					),
+					cancel_url: getUrl(ctx, ctx.body.cancelUrl),
+					...params,
+				};
+
+				const result = await cb.hostedPage.checkoutNewForItems(newSubParams);
+
+				return ctx.json({
+					url: result.hosted_page.url || "",
+					id: result.hosted_page.id || "",
+					redirect: !ctx.body.disableRedirect,
+				});
+			} catch (e) {
+				const error = e as { message?: string; api_error_code?: string };
+				throw ctx.error("BAD_REQUEST", {
+					message: error.message || "An error occurred",
+					code: error.api_error_code,
+				});
+			}
+		},
+	);
+}
+
+/**
+ * Update (switch/upgrade) an existing subscription endpoint.
+ * Uses Chargebee checkoutExistingForItems to modify an active subscription.
+ */
+export function updateSubscription(options: ChargebeeOptions) {
+	const cb = options.chargebeeClient;
+	const subscriptionOptions = options.subscription as SubscriptionOptions;
+
+	return createAuthEndpoint(
+		"/subscription/update",
 		{
 			method: "POST",
 			body: z.object({
@@ -92,11 +466,10 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 				seats: z.number().optional(),
 				metadata: z.record(z.string(), z.unknown()).optional(),
 				disableRedirect: z.boolean().optional(),
-				trialEnd: z.number().optional(),
 			}),
 			metadata: {
 				openapi: {
-					operationId: "upgradeSubscription",
+					operationId: "updateSubscription",
 				},
 			},
 			use: [
@@ -132,13 +505,13 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 				});
 			}
 
-			// Get the plan for the first item price ID to check for trial
 			const primaryItemPriceId = itemPriceIds[0];
 			if (!primaryItemPriceId) {
 				throw new APIError("BAD_REQUEST", {
 					message: "Invalid item price ID",
 				});
 			}
+
 			const plan = await getPlanByItemPriceId(options, primaryItemPriceId);
 
 			// If subscriptionId is provided, find that specific subscription
@@ -170,143 +543,16 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 				});
 			}
 
-			// Determine customer ID
-			let customerId: string | null | undefined;
-
-			if (customerType === "organization") {
-				// Organization subscription
-				customerId = subscriptionToUpdate?.chargebeeCustomerId;
-
-				if (!customerId) {
-					const org = await ctx.context.adapter.findOne<
-						Organization & WithChargebeeCustomerId
-					>({
-						model: "organization",
-						where: [{ field: "id", value: referenceId }],
-					});
-
-					if (!org) {
-						throw new APIError("BAD_REQUEST", {
-							message: CHARGEBEE_ERROR_CODES.ORGANIZATION_NOT_FOUND.message,
-						});
-					}
-
-					customerId = org.chargebeeCustomerId ?? undefined;
-
-					// Create customer if doesn't exist
-					if (!customerId) {
-						try {
-							// Search for existing customer - using metadata filter
-							const customerList = await cb.customer.list({
-								limit: 1,
-							});
-
-							// Filter by organizationId in metadata
-							let chargebeeCustomer = customerList?.list?.find(
-								(item) => item.customer.meta_data?.organizationId === org.id,
-							)?.customer;
-
-							if (!chargebeeCustomer) {
-								// Get custom params
-								let extraCreateParams: Record<string, unknown> = {};
-								if (options.organization?.getCustomerCreateParams) {
-									extraCreateParams =
-										await options.organization.getCustomerCreateParams(
-											org,
-											ctx,
-										);
-								}
-
-								// Create customer
-								const customerResult = await cb.customer.create({
-									first_name: org.name,
-									meta_data: {
-										organizationId: org.id,
-										customerType: "organization",
-										...ctx.body.metadata,
-									},
-									...extraCreateParams,
-								});
-
-								chargebeeCustomer = customerResult.customer;
-
-								// Call onCreate callback
-								await options.organization?.onCustomerCreate?.(
-									{
-										chargebeeCustomer,
-										organization: {
-											...org,
-											chargebeeCustomerId: chargebeeCustomer.id,
-										},
-									},
-									ctx,
-								);
-							}
-
-							// Update org with customer ID
-							await ctx.context.adapter.update({
-								model: "organization",
-								update: { chargebeeCustomerId: chargebeeCustomer.id },
-								where: [{ field: "id", value: org.id }],
-							});
-
-							customerId = chargebeeCustomer.id;
-						} catch (e) {
-							ctx.context.logger.error("Error creating customer", e);
-							throw new APIError("BAD_REQUEST", {
-								message:
-									CHARGEBEE_ERROR_CODES.UNABLE_TO_CREATE_CUSTOMER.message,
-							});
-						}
-					}
-				}
-			} else {
-				// User subscription
-				customerId =
-					subscriptionToUpdate?.chargebeeCustomerId || user.chargebeeCustomerId;
-
-				if (!customerId) {
-					try {
-						// Search for existing customer by email
-						const customerList = await cb.customer.list({
-							limit: 1,
-						});
-
-						let chargebeeCustomer = customerList?.list?.find(
-							(item) =>
-								item.customer.email === user.email &&
-								item.customer.meta_data?.customerType !== "organization",
-						)?.customer;
-
-						if (!chargebeeCustomer) {
-							const customerResult = await cb.customer.create({
-								email: user.email,
-								first_name: user.name,
-								meta_data: {
-									userId: user.id,
-									customerType: "user",
-									...ctx.body.metadata,
-								},
-							});
-							chargebeeCustomer = customerResult.customer;
-						}
-
-						// Update user with customer ID
-						await ctx.context.adapter.update({
-							model: "user",
-							update: { chargebeeCustomerId: chargebeeCustomer.id },
-							where: [{ field: "id", value: user.id }],
-						});
-
-						customerId = chargebeeCustomer.id;
-					} catch (e) {
-						ctx.context.logger.error("Error creating customer", e);
-						throw new APIError("BAD_REQUEST", {
-							message: CHARGEBEE_ERROR_CODES.UNABLE_TO_CREATE_CUSTOMER.message,
-						});
-					}
-				}
-			}
+			// Find or create customer
+			const customerId = await getOrCreateCustomerId(
+				ctx,
+				options,
+				customerType,
+				referenceId,
+				ctx.body.metadata,
+				subscriptionToUpdate?.chargebeeCustomerId ||
+					(customerType === "user" ? user.chargebeeCustomerId : undefined),
+			);
 
 			// Get subscriptions from DB
 			const subscriptions = subscriptionToUpdate
@@ -320,24 +566,23 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 				isActiveOrTrialing(sub),
 			);
 
-			// Get active Chargebee subscriptions
+			// Get active Chargebee subscriptions for this customer
 			const chargebeeSubsList = await cb.subscription.list({
+				customer_id: { is: customerId },
 				limit: 100,
 			});
 
-			// Filter subscriptions by customer ID and status
 			const activeSubscriptions =
 				chargebeeSubsList?.list
 					?.filter(
 						(item) =>
-							item.subscription.customer_id === customerId &&
-							(item.subscription.status === "active" ||
-								item.subscription.status === "in_trial"),
+							item.subscription.status === "active" ||
+							item.subscription.status === "in_trial" ||
+							item.subscription.status === "non_renewing",
 					)
 					.map((item) => item.subscription) || [];
 
 			const activeSubscription = activeSubscriptions.find((sub) => {
-				// Match specific subscription if provided
 				if (
 					subscriptionToUpdate?.chargebeeSubscriptionId ||
 					ctx.body.subscriptionId
@@ -347,7 +592,6 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 						sub.id === ctx.body.subscriptionId
 					);
 				}
-				// Match by referenceId
 				if (activeOrTrialingSubscription?.chargebeeSubscriptionId) {
 					return (
 						sub.id === activeOrTrialingSubscription.chargebeeSubscriptionId
@@ -356,10 +600,11 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 				return false;
 			});
 
-			// Find future subscription for reuse
-			const futureSubscription = subscriptions.find(
-				(sub) => sub.status === "future",
-			);
+			if (!activeSubscription) {
+				throw new APIError("BAD_REQUEST", {
+					message: CHARGEBEE_ERROR_CODES.SUBSCRIPTION_NOT_FOUND.message,
+				});
+			}
 
 			// Check if already subscribed to same item prices
 			const currentItemPriceIds =
@@ -388,65 +633,31 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 				});
 			}
 
-			// Handle upgrade of existing subscription
-			if (activeSubscription && customerId) {
-				// Find or create DB subscription record
-				let dbSubscription = await ctx.context.adapter.findOne<Subscription>({
-					model: "subscription",
-					where: [
-						{
-							field: "chargebeeSubscriptionId",
-							value: activeSubscription.id,
-						},
-					],
-				});
+			// Find or sync DB subscription record
+			let dbSubscription = await ctx.context.adapter.findOne<Subscription>({
+				model: "subscription",
+				where: [
+					{
+						field: "chargebeeSubscriptionId",
+						value: activeSubscription.id,
+					},
+				],
+			});
 
-				// Update existing DB record if needed
-				if (!dbSubscription && activeOrTrialingSubscription) {
-					await ctx.context.adapter.update<Subscription>({
-						model: "subscription",
-						update: {
-							chargebeeSubscriptionId: activeSubscription.id,
-							updatedAt: new Date(),
-						},
-						where: [{ field: "id", value: activeOrTrialingSubscription.id }],
-					});
-					dbSubscription = activeOrTrialingSubscription;
-				}
-
-				// Continue to hosted page checkout for upgrades
-				// (removed portal session redirect to use checkoutExistingForItems)
-			}
-
-			// Create new subscription
-			let subscription: Subscription | undefined =
-				activeOrTrialingSubscription || futureSubscription;
-
-			// Update future subscription
-			if (futureSubscription && !activeOrTrialingSubscription) {
-				const updated = await ctx.context.adapter.update({
+			if (!dbSubscription && activeOrTrialingSubscription) {
+				await ctx.context.adapter.update<Subscription>({
 					model: "subscription",
 					update: {
-						seats: ctx.body.seats || 1,
+						chargebeeSubscriptionId: activeSubscription.id,
 						updatedAt: new Date(),
 					},
-					where: [{ field: "id", value: futureSubscription.id }],
+					where: [{ field: "id", value: activeOrTrialingSubscription.id }],
 				});
-				subscription = (updated as Subscription) || futureSubscription;
+				dbSubscription = activeOrTrialingSubscription;
 			}
 
-			// Create new subscription record
-			if (!subscription) {
-				subscription = await ctx.context.adapter.create({
-					model: "subscription",
-					data: {
-						chargebeeCustomerId: customerId,
-						status: "future",
-						referenceId,
-						seats: ctx.body.seats || 1,
-					},
-				});
-			}
+			const subscription: Subscription =
+				dbSubscription || activeOrTrialingSubscription || subscriptionToUpdate!;
 
 			if (!subscription) {
 				ctx.context.logger.error("Subscription ID not found");
@@ -465,7 +676,6 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 				: undefined;
 
 			// Store pending subscription info in customer metadata
-			// Hosted pages don't support subscription metadata, so we use customer metadata instead
 			try {
 				await cb.customer.update(customerId, {
 					meta_data: {
@@ -478,108 +688,27 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 				ctx.context.logger.warn("Failed to update customer metadata", e);
 			}
 
-			// Check if upgrading existing subscription or creating new one
-			const hasActiveSubscription = activeSubscription?.id;
-
 			try {
-				let result: { hosted_page: { url?: string; id?: string } };
+				const existingSubParams: Record<string, unknown> = {
+					subscription: {
+						id: activeSubscription.id,
+					},
+					subscription_items: itemPriceIds.map((id: string) => ({
+						item_price_id: id,
+						quantity: ctx.body.seats || 1,
+					})),
+					redirect_url: getUrl(
+						ctx,
+						`${ctx.context.baseURL}/subscription/success?callbackURL=${encodeURIComponent(
+							ctx.body.successUrl,
+						)}&subscriptionId=${encodeURIComponent(subscription.id)}`,
+					),
+					cancel_url: getUrl(ctx, ctx.body.cancelUrl),
+					...params,
+				};
 
-				if (hasActiveSubscription) {
-					// Upgrade existing subscription using checkoutExistingForItems
-					ctx.context.logger.info(
-						`Upgrading existing subscription ${activeSubscription.id}`,
-					);
-
-					const existingSubParams: Record<string, unknown> = {
-						subscription: {
-							id: activeSubscription.id,
-							// Note: Trials cannot be set on existing subscriptions during upgrades
-						},
-						subscription_items: itemPriceIds.map((id: string) => ({
-							item_price_id: id,
-							quantity: ctx.body.seats || 1,
-						})),
-						redirect_url: getUrl(
-							ctx,
-							`${ctx.context.baseURL}/subscription/success?callbackURL=${encodeURIComponent(
-								ctx.body.successUrl,
-							)}&subscriptionId=${encodeURIComponent(subscription.id)}`,
-						),
-						cancel_url: getUrl(ctx, ctx.body.cancelUrl),
-						...params,
-					};
-
-					result =
-						await cb.hostedPage.checkoutExistingForItems(existingSubParams);
-				} else {
-					// Create new subscription using checkoutNewForItems
-					ctx.context.logger.info("Creating new subscription via hosted page");
-
-					// Calculate trial end date from plan configuration
-					let trialEnd = ctx.body.trialEnd;
-					if (!trialEnd && plan?.freeTrial?.days) {
-						// Check if user already had a trial to prevent duplicate trials
-						if (subscriptionOptions.preventDuplicateTrails) {
-							const previousSubscriptions =
-								await ctx.context.adapter.findMany<Subscription>({
-									model: "subscription",
-									where: [{ field: "referenceId", value: referenceId }],
-								});
-
-							const hadTrial = previousSubscriptions.some(
-								(sub) => sub.trialStart != null,
-							);
-
-							if (!hadTrial) {
-								// Calculate trial end: current time + trial days
-								const trialEndDate = new Date();
-								trialEndDate.setDate(
-									trialEndDate.getDate() + plan.freeTrial.days,
-								);
-								trialEnd = Math.floor(trialEndDate.getTime() / 1000);
-								ctx.context.logger.info(
-									`Applying ${plan.freeTrial.days}-day trial (ends: ${trialEndDate.toISOString()})`,
-								);
-							} else {
-								ctx.context.logger.info(
-									"User already had a trial, skipping duplicate trial",
-								);
-							}
-						} else {
-							// Calculate trial end: current time + trial days
-							const trialEndDate = new Date();
-							trialEndDate.setDate(
-								trialEndDate.getDate() + plan.freeTrial.days,
-							);
-							trialEnd = Math.floor(trialEndDate.getTime() / 1000);
-							ctx.context.logger.info(
-								`Applying ${plan.freeTrial.days}-day trial (ends: ${trialEndDate.toISOString()})`,
-							);
-						}
-					}
-
-					const newSubParams: Record<string, unknown> = {
-						subscription_items: itemPriceIds.map((id: string) => ({
-							item_price_id: id,
-							quantity: ctx.body.seats || 1,
-						})),
-						customer: { id: customerId },
-						...(trialEnd && {
-							subscription: {
-								trial_end: trialEnd,
-							},
-						}),
-						redirect_url: getUrl(
-							ctx,
-							`${ctx.context.baseURL}/subscription/success?callbackURL=${encodeURIComponent(
-								ctx.body.successUrl,
-							)}&subscriptionId=${encodeURIComponent(subscription.id)}`,
-						),
-						cancel_url: getUrl(ctx, ctx.body.cancelUrl),
-						...params,
-					};
-					result = await cb.hostedPage.checkoutNewForItems(newSubParams);
-				}
+				const result =
+					await cb.hostedPage.checkoutExistingForItems(existingSubParams);
 
 				return ctx.json({
 					url: result.hosted_page.url || "",
@@ -593,6 +722,85 @@ export function upgradeSubscription(options: ChargebeeOptions) {
 					code: error.api_error_code,
 				});
 			}
+		},
+	);
+}
+
+/**
+ * List active subscriptions endpoint.
+ * Returns the active/trialing subscriptions for the current user or organization,
+ * enriched with plan limits and itemPriceId from subscription items.
+ */
+export function listActiveSubscriptions(options: ChargebeeOptions) {
+	const subscriptionOptions = options.subscription as SubscriptionOptions;
+
+	return createAuthEndpoint(
+		"/subscription/list",
+		{
+			method: "GET",
+			query: z
+				.object({
+					referenceId: z.string().optional(),
+					customerType: z.enum(["user", "organization"]).optional(),
+				})
+				.optional(),
+			metadata: {
+				openapi: {
+					operationId: "listActiveSubscriptions",
+				},
+			},
+			use: [
+				sessionMiddleware,
+				referenceMiddleware(subscriptionOptions, "list-subscription"),
+			],
+		},
+		async (ctx) => {
+			const customerType = ctx.query?.customerType || "user";
+			const referenceId =
+				ctx.query?.referenceId ||
+				getReferenceId(ctx.context.session, customerType, options);
+
+			const subscriptions = await ctx.context.adapter.findMany<Subscription>({
+				model: "subscription",
+				where: [{ field: "referenceId", value: referenceId }],
+			});
+
+			if (!subscriptions.length) {
+				return ctx.json([]);
+			}
+
+			const plans = await getPlans(options.subscription);
+
+			const activeSubs = subscriptions.filter((sub) => isActiveOrTrialing(sub));
+
+			const enrichedSubs = await Promise.all(
+				activeSubs.map(async (sub) => {
+					// Look up the subscription items to find the primary item price ID
+					const items = await ctx.context.adapter.findMany<{
+						id: string;
+						subscriptionId: string;
+						itemPriceId: string;
+						itemType: string;
+					}>({
+						model: "subscriptionItem",
+						where: [{ field: "subscriptionId", value: sub.id }],
+					});
+
+					const primaryItem =
+						items.find((i) => i.itemType === "plan") || items[0];
+					const plan = primaryItem
+						? plans.find((p) => p.itemPriceId === primaryItem.itemPriceId)
+						: undefined;
+
+					return {
+						...sub,
+						limits: plan?.limits,
+						itemPriceId: primaryItem?.itemPriceId,
+					};
+				}),
+			);
+
+			return ctx.json(enrichedSubs);
 		},
 	);
 }
@@ -690,8 +898,7 @@ export function cancelSubscriptionCallback(options: ChargebeeOptions) {
 									],
 								});
 
-								// Call onSubscriptionCancel callback
-								await subscriptionOptions.onSubscriptionDeleted?.({
+								await subscriptionOptions.onSubscriptionCancel?.({
 									subscription: {
 										...subscription,
 										status: chargebeeSub.status,
@@ -891,8 +1098,9 @@ export function cancelSubscription(options: ChargebeeOptions) {
 				});
 			}
 
-			// Get active subscriptions from Chargebee
+			// Get active subscriptions from Chargebee for this customer
 			const chargebeeSubsList = await cb.subscription.list({
+				customer_id: { is: subscription.chargebeeCustomerId },
 				limit: 100,
 			});
 
@@ -900,10 +1108,9 @@ export function cancelSubscription(options: ChargebeeOptions) {
 				chargebeeSubsList?.list
 					?.filter(
 						(item) =>
-							item.subscription.customer_id ===
-								subscription.chargebeeCustomerId &&
-							(item.subscription.status === "active" ||
-								item.subscription.status === "in_trial"),
+							item.subscription.status === "active" ||
+							item.subscription.status === "in_trial" ||
+							item.subscription.status === "non_renewing",
 					)
 					.map((item) => item.subscription) || [];
 

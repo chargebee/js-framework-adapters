@@ -4,8 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	cancelSubscription,
 	cancelSubscriptionCallback,
+	createSubscription,
 	getWebhookEndpoint,
-	upgradeSubscription,
+	listActiveSubscriptions,
+	updateSubscription,
 } from "../src/routes";
 import type { ChargebeeOptions } from "../src/types";
 
@@ -33,14 +35,14 @@ describe("routes - getWebhookEndpoint", () => {
 		expect(endpoint.path).toBe("/chargebee/webhook");
 	});
 
-	it("should support onEvent handler option", () => {
-		const onEvent = vi.fn();
-		const optionsWithEvent: ChargebeeOptions = {
+	it("should support webhookHandler option", () => {
+		const webhookHandler = vi.fn();
+		const optionsWithHandler: ChargebeeOptions = {
 			...mockOptions,
-			onEvent,
+			webhookHandler,
 		};
 
-		const endpoint = getWebhookEndpoint(optionsWithEvent);
+		const endpoint = getWebhookEndpoint(optionsWithHandler);
 
 		expect(endpoint).toBeDefined();
 	});
@@ -62,7 +64,7 @@ describe("routes - getWebhookEndpoint", () => {
 	});
 });
 
-describe("routes - upgradeSubscription", () => {
+describe("routes - createSubscription", () => {
 	const mockChargebee = {
 		__clientIdentifier: vi.fn(),
 		customer: {
@@ -94,11 +96,11 @@ describe("routes - upgradeSubscription", () => {
 		vi.clearAllMocks();
 	});
 
-	it("should create upgrade subscription endpoint", () => {
-		const endpoint = upgradeSubscription(mockOptions);
+	it("should create subscription endpoint", () => {
+		const endpoint = createSubscription(mockOptions);
 
 		expect(endpoint).toBeDefined();
-		expect(endpoint.path).toBe("/subscription/upgrade");
+		expect(endpoint.path).toBe("/subscription/create");
 	});
 
 	it("should have email verification enabled option", () => {
@@ -111,19 +113,19 @@ describe("routes - upgradeSubscription", () => {
 			},
 		};
 
-		const endpoint = upgradeSubscription(optionsWithVerification);
+		const endpoint = createSubscription(optionsWithVerification);
 
 		expect(endpoint).toBeDefined();
 	});
 
 	it("should accept single itemPriceId", () => {
-		const endpoint = upgradeSubscription(mockOptions);
+		const endpoint = createSubscription(mockOptions);
 
 		expect(endpoint).toBeDefined();
 	});
 
 	it("should accept array of itemPriceIds", () => {
-		const endpoint = upgradeSubscription(mockOptions);
+		const endpoint = createSubscription(mockOptions);
 
 		expect(endpoint).toBeDefined();
 	});
@@ -136,31 +138,134 @@ describe("routes - upgradeSubscription", () => {
 			},
 		};
 
-		const endpoint = upgradeSubscription(optionsWithOrg);
+		const endpoint = createSubscription(optionsWithOrg);
 
 		expect(endpoint).toBeDefined();
 	});
 
 	it("should support metadata option", () => {
-		const endpoint = upgradeSubscription(mockOptions);
+		const endpoint = createSubscription(mockOptions);
 
 		expect(endpoint).toBeDefined();
 	});
 
 	it("should support seats option", () => {
-		const endpoint = upgradeSubscription(mockOptions);
+		const endpoint = createSubscription(mockOptions);
 
 		expect(endpoint).toBeDefined();
 	});
 
 	it("should support trial end option", () => {
-		const endpoint = upgradeSubscription(mockOptions);
+		const endpoint = createSubscription(mockOptions);
 
 		expect(endpoint).toBeDefined();
 	});
 
 	it("should support disable redirect option", () => {
-		const endpoint = upgradeSubscription(mockOptions);
+		const endpoint = createSubscription(mockOptions);
+
+		expect(endpoint).toBeDefined();
+	});
+});
+
+describe("routes - updateSubscription", () => {
+	const mockChargebee = {
+		__clientIdentifier: vi.fn(),
+		customer: {
+			list: vi.fn(),
+			create: vi.fn(),
+		},
+		subscription: {
+			list: vi.fn(),
+			update: vi.fn(),
+		},
+	} as unknown as Chargebee;
+
+	const mockPlans = [
+		{ name: "Basic", itemPriceId: "basic-usd-monthly" },
+		{ name: "Pro", itemPriceId: "pro-usd-monthly" },
+	];
+
+	const mockOptions: ChargebeeOptions = {
+		chargebeeClient: mockChargebee,
+		subscription: {
+			enabled: true,
+			plans: mockPlans,
+		},
+	};
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("should create update subscription endpoint", () => {
+		const endpoint = updateSubscription(mockOptions);
+
+		expect(endpoint).toBeDefined();
+		expect(endpoint.path).toBe("/subscription/update");
+	});
+
+	it("should support organization subscriptions", () => {
+		const optionsWithOrg: ChargebeeOptions = {
+			...mockOptions,
+			organization: {
+				enabled: true,
+			},
+		};
+
+		const endpoint = updateSubscription(optionsWithOrg);
+
+		expect(endpoint).toBeDefined();
+	});
+
+	it("should support seats option", () => {
+		const endpoint = updateSubscription(mockOptions);
+
+		expect(endpoint).toBeDefined();
+	});
+
+	it("should support disable redirect option", () => {
+		const endpoint = updateSubscription(mockOptions);
+
+		expect(endpoint).toBeDefined();
+	});
+});
+
+describe("routes - listActiveSubscriptions", () => {
+	const mockChargebee = {
+		__clientIdentifier: vi.fn(),
+	} as unknown as Chargebee;
+
+	const mockPlans = [
+		{ name: "Basic", itemPriceId: "basic-usd-monthly", type: "plan" as const },
+		{ name: "Pro", itemPriceId: "pro-usd-monthly", type: "plan" as const },
+	];
+
+	const mockOptions: ChargebeeOptions = {
+		chargebeeClient: mockChargebee,
+		subscription: {
+			enabled: true,
+			plans: mockPlans,
+		},
+	};
+
+	it("should create list active subscriptions endpoint", () => {
+		const endpoint = listActiveSubscriptions(mockOptions);
+
+		expect(endpoint).toBeDefined();
+		expect(endpoint.path).toBe("/subscription/list");
+	});
+
+	it("should support async plans function", () => {
+		const optionsWithAsyncPlans: ChargebeeOptions = {
+			...mockOptions,
+			subscription: {
+				enabled: true,
+				plans: async () => mockPlans,
+			},
+		};
+
+		const endpoint = listActiveSubscriptions(optionsWithAsyncPlans);
 
 		expect(endpoint).toBeDefined();
 	});
