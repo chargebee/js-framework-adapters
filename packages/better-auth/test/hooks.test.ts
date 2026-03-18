@@ -148,22 +148,24 @@ describe("database hooks", () => {
 
 			await hook?.(user);
 
-			expect(mockChargebeeClient.customer.create).toHaveBeenCalledWith(
-				expect.objectContaining({
-					email: "test@example.com",
-					first_name: "John",
-					last_name: "Doe",
-				}),
-			);
-			expect(mockAdapter.updateUser).toHaveBeenCalledWith("user_123", {
-				chargebeeCustomerId: "cust_new",
-			});
+		expect(mockChargebeeClient.customer.create).toHaveBeenCalledWith(
+			expect.objectContaining({
+				email: "test@example.com",
+			}),
+		);
+		expect(mockAdapter.updateUser).toHaveBeenCalledWith("user_123", {
+			chargebeeCustomerId: "cust_new",
+		});
 		});
 
-		it("should handle single name without space", async () => {
+		it("should merge getCustomerCreateParams into customer create payload", async () => {
 			const plugin = chargebee({
 				chargebeeClient: mockChargebeeClient,
 				createCustomerOnSignUp: true,
+				getCustomerCreateParams: (user) => ({
+					first_name: user.name?.split(" ")[0],
+					last_name: user.name?.split(" ").slice(1).join(" ") || undefined,
+				}),
 			});
 
 			const ctx = {
@@ -185,7 +187,7 @@ describe("database hooks", () => {
 			const user: User = {
 				id: "user_123",
 				email: "test@example.com",
-				name: "John",
+				name: "John Doe",
 				emailVerified: false,
 				createdAt: new Date(),
 				updatedAt: new Date(),
@@ -195,8 +197,9 @@ describe("database hooks", () => {
 
 			expect(mockChargebeeClient.customer.create).toHaveBeenCalledWith(
 				expect.objectContaining({
+					email: "test@example.com",
 					first_name: "John",
-					last_name: "",
+					last_name: "Doe",
 				}),
 			);
 		});
@@ -341,14 +344,12 @@ describe("database hooks", () => {
 
 			await hook?.(user);
 
-			expect(mockChargebeeClient.customer.update).toHaveBeenCalledWith(
-				"cust_123",
-				{
-					email: "newemail@example.com",
-					first_name: "Test",
-					last_name: "User",
-				},
-			);
+		expect(mockChargebeeClient.customer.update).toHaveBeenCalledWith(
+			"cust_123",
+			{
+				email: "newemail@example.com",
+			},
+		);
 		});
 
 		it("should silently fail if update throws error", async () => {

@@ -9,6 +9,7 @@ import { z } from "zod";
 import { CHARGEBEE_ERROR_CODES } from "./error-codes";
 import { referenceMiddleware, sessionMiddleware } from "./middleware";
 import type {
+	ChargebeeCustomerCreateParams,
 	ChargebeeOptions,
 	Subscription,
 	SubscriptionOptions,
@@ -99,7 +100,7 @@ async function getOrCreateCustomerId(
 		if (org.chargebeeCustomerId) return org.chargebeeCustomerId;
 
 		try {
-			let extraCreateParams: Record<string, unknown> = {};
+			let extraCreateParams: ChargebeeCustomerCreateParams = {};
 			if (options.organization?.getCustomerCreateParams) {
 				extraCreateParams = await options.organization.getCustomerCreateParams(
 					org,
@@ -108,7 +109,6 @@ async function getOrCreateCustomerId(
 			}
 
 			const customerResult = await cb.customer.create({
-				first_name: org.name,
 				meta_data: {
 					organizationId: org.id,
 					customerType: "organization",
@@ -175,15 +175,18 @@ async function getOrCreateCustomerId(
 			)?.customer;
 
 			if (!chargebeeCustomer) {
+				let extraCreateParams: ChargebeeCustomerCreateParams = {};
+				if (options.getCustomerCreateParams) {
+					extraCreateParams = await options.getCustomerCreateParams(user, ctx);
+				}
 				const customerResult = await cb.customer.create({
 					email: user.email,
-					first_name: user.name?.split(" ")[0],
-					last_name: user.name?.split(" ").slice(1).join(" "),
 					meta_data: {
 						userId: user.id,
 						customerType: "user",
 						...metadata,
 					},
+					...extraCreateParams,
 				});
 				chargebeeCustomer = customerResult.customer;
 			}

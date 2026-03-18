@@ -147,6 +147,27 @@ chargebee({
 })
 ```
 
+#### Passing Additional Customer Params
+
+Better Auth stores names in a single `user.name` field. If you want to pass `first_name`, `last_name`, or any other Chargebee customer field, use `getCustomerCreateParams`:
+
+```ts
+chargebee({
+    // ... other options
+    createCustomerOnSignUp: true,
+    getCustomerCreateParams: (user) => {
+        const [firstName, ...rest] = (user.name ?? "").split(" ");
+        return {
+            first_name: firstName,
+            last_name: rest.join(" ") || undefined,
+            // any other Chargebee Customer.CreateInputParam fields
+        };
+    },
+})
+```
+
+The callback receives the `user` object and an optional `ctx` (request context, available when the customer is created on-demand at subscription time rather than during sign-up).
+
 ### Subscription Management
 
 #### Defining Plans
@@ -748,6 +769,7 @@ chargebee({
 | `webhookUsername`        | `string`   | Username for Basic Auth on the webhook endpoint. Recommended in production.                   |
 | `webhookPassword`        | `string`   | Password for Basic Auth on the webhook endpoint. Recommended in production.                   |
 | `createCustomerOnSignUp` | `boolean`  | Whether to automatically create a Chargebee customer when a user signs up. Default: `false`.  |
+| `getCustomerCreateParams`| `function` | Return additional params for `cb.customer.create` (e.g. `first_name`, `last_name`). Receives `user` and optional `ctx`. |
 | `onCustomerCreate`       | `function` | Callback called after a customer is created. Receives `{ chargebeeCustomer, user }`.          |
 | `webhookHandler`         | `function` | Callback receiving the webhook handler instance. Call `handler.on(EventType, fn)` to register typed event listeners. |
 | `subscription`           | `object`   | Subscription configuration. See [Subscription options](#subscription-options).                |

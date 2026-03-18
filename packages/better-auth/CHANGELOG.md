@@ -2,6 +2,7 @@
 * * *
 
 ### Feature:
+- Added `getCustomerCreateParams` option to `ChargebeeOptions`, allowing you to return additional Chargebee customer creation params (e.g. `first_name`, `last_name`, phone) for user customers. The callback receives the `user` object and an optional request `ctx` (available when the customer is created on-demand, not during sign-up).
 - Added `createSubscription` route to initiate a new Chargebee hosted checkout session.
 - Added `updateSubscription` route to update an existing subscription via hosted page.
 - Added `listActiveSubscriptions` route (`GET /subscription/list`) to retrieve the caller's active/trialing subscriptions enriched with plan `limits` and `itemPriceId`.
@@ -14,9 +15,12 @@
 
 ### Improvement:
 - Added a startup warning when `webhookUsername` / `webhookPassword` are not configured, alerting that the webhook endpoint is unauthenticated.
-- User's name is now split into `first_name` / `last_name` when creating a Chargebee customer.
 - Extracted `isActiveOrTrialing` helper and used it consistently across hooks and routes.
 - Renamed `onEvent` to `webhookHandler`, which now receives the typed `WebhookHandler` instance — use `handler.on(WebhookEventType.X, fn)` for per-event listeners with full type safety.
+
+### Breaking Change:
+- `cb.customer.create` no longer automatically splits `user.name` into `first_name` and `last_name`. Better Auth uses a single `user.name` field; pass name fields explicitly via `getCustomerCreateParams` if needed.
+- The user update hook no longer syncs `first_name` / `last_name` to Chargebee — only `email` is synced.
 
 
 ### v1.0.0-beta.2 (2026-02-05)

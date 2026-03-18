@@ -12,7 +12,11 @@ import {
 	updateSubscription,
 } from "./routes";
 import { getSchema } from "./schema";
-import type { ChargebeeOptions, WithChargebeeCustomerId } from "./types";
+import type {
+	ChargebeeCustomerCreateParams,
+	ChargebeeOptions,
+	WithChargebeeCustomerId,
+} from "./types";
 import { VERSION } from "./version";
 
 declare module "@better-auth/core" {
@@ -73,14 +77,18 @@ export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 										) {
 											chargebeeCustomer = existing.list[0].customer;
 										} else {
+											let extraCreateParams: ChargebeeCustomerCreateParams = {};
+											if (options.getCustomerCreateParams) {
+												extraCreateParams =
+													await options.getCustomerCreateParams(user);
+											}
 											const result = await cb.customer.create({
 												email: user.email,
-												first_name: user.name?.split(" ")[0],
-												last_name: user.name?.split(" ").slice(1).join(" "),
 												meta_data: customerMetadata.set(undefined, {
 													userId: user.id,
 													customerType: "user",
 												}),
+												...extraCreateParams,
 											});
 											chargebeeCustomer = result.customer;
 										}
@@ -107,8 +115,6 @@ export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 									try {
 										await cb.customer.update(user.chargebeeCustomerId, {
 											email: user.email,
-											first_name: user.name?.split(" ")[0],
-											last_name: user.name?.split(" ").slice(1).join(" "),
 										});
 									} catch {
 										// Silently fail — don't break auth for billing sync issues
