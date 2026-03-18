@@ -282,31 +282,34 @@ async function handleCustomerDeletion(
 	}
 
 	// Fallback: Find user/org by chargebeeCustomerId directly
-	// This handles cases where metadata is missing or incorrect
-	try {
-		// Try to find and clear user
-		const users = await ctx.adapter.findMany<{ id: string }>({
-			model: "user",
-			where: [
-				{
-					field: "chargebeeCustomerId",
-					value: customer.id,
-				},
-			],
-		});
-
-		for (const user of users) {
-			await ctx.adapter.update({
+	// This handles cases where metadata is missing or incorrect.
+	// Skip user fallback in org mode — the chargebeeCustomerId column does not
+	// exist on the user table when organization.enabled is true.
+	if (!_options.organization?.enabled) {
+		try {
+			const users = await ctx.adapter.findMany<{ id: string }>({
 				model: "user",
-				update: { chargebeeCustomerId: null },
-				where: [{ field: "id", value: user.id }],
+				where: [
+					{
+						field: "chargebeeCustomerId",
+						value: customer.id,
+					},
+				],
 			});
-			ctx.logger.info(
-				`Cleared chargebeeCustomerId from user ${user.id} (fallback)`,
-			);
+
+			for (const user of users) {
+				await ctx.adapter.update({
+					model: "user",
+					update: { chargebeeCustomerId: null },
+					where: [{ field: "id", value: user.id }],
+				});
+				ctx.logger.info(
+					`Cleared chargebeeCustomerId from user ${user.id} (fallback)`,
+				);
+			}
+		} catch (e) {
+			ctx.logger.error("Error clearing chargebeeCustomerId from users:", e);
 		}
-	} catch (e) {
-		ctx.logger.error("Error clearing chargebeeCustomerId from users:", e);
 	}
 
 	// Try to clear organizations (if enabled)

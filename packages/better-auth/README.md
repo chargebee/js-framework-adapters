@@ -853,6 +853,8 @@ plugins: [
 ]
 ```
 
+When `organization.enabled: true`, the plugin automatically omits `chargebeeCustomerId` from the `user` table and disables user-level billing hooks — no extra column or migration needed for the user table.
+
 #### Creating Organization Subscriptions
 
 Even with Organization Customer enabled, user subscriptions remain available and are the default. To use the organization as the billing entity, pass `customerType: "organization"`:

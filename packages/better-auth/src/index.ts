@@ -63,6 +63,7 @@ export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 						user: {
 							create: {
 								async after(user) {
+									if (options.organization?.enabled) return;
 									if (!options.createCustomerOnSignUp) return;
 									try {
 										const existing = await cb.customer.list({
@@ -113,6 +114,7 @@ export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 							},
 							update: {
 								async after(user: User & WithChargebeeCustomerId) {
+									if (options.organization?.enabled) return;
 									if (!user.chargebeeCustomerId) return;
 									try {
 										await cb.customer.update(user.chargebeeCustomerId, {
