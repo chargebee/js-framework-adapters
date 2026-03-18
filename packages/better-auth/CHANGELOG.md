@@ -1,3 +1,10 @@
+### v1.0.0-beta.5 (2026-03-18)
+* * *
+
+### Bug:
+- Fixed `chargebeeCustomerId` column naming. The field definition in both `userSchema` and `orgSchema` had an explicit `fieldName: "chargebeeCustomerId"` that overrode Better Auth's built-in camelCase→snake_case mapping, causing the column to be created as `chargebeeCustomerId` instead of the expected `chargebee_customer_id`. The explicit override has been removed so Better Auth's automatic mapping applies correctly.
+
+
 ### v1.0.0-beta.4 (2026-03-18)
 * * *
 

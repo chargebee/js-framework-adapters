@@ -20,7 +20,6 @@ describe("schema - getSchema", () => {
 			type: "string",
 			required: false,
 			unique: true,
-			fieldName: "chargebeeCustomerId",
 		});
 
 		expect(schema).not.toHaveProperty("subscription");
@@ -72,7 +71,6 @@ describe("schema - getSchema", () => {
 			type: "string",
 			required: false,
 			unique: true,
-			fieldName: "chargebeeCustomerId",
 		});
 	});
 
