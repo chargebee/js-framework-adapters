@@ -9,6 +9,7 @@ import {
 	createSubscription,
 	getWebhookEndpoint,
 	listActiveSubscriptions,
+	subscriptionSuccess,
 	updateSubscription,
 } from "./routes";
 import { getSchema } from "./schema";
@@ -38,6 +39,7 @@ export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 			chargebeeWebhook: getWebhookEndpoint(options),
 			createSubscription: createSubscription(options),
 			updateSubscription: updateSubscription(options),
+			subscriptionSuccess: subscriptionSuccess(options),
 			cancelSubscription: cancelSubscription(options),
 			cancelSubscriptionCallback: cancelSubscriptionCallback(options),
 			createPortalSession: createPortalSession(options),

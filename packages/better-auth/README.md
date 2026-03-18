@@ -298,7 +298,7 @@ if (error) {
 }
 ```
 
-> **Important:** The `successUrl` parameter is internally modified to handle race conditions between checkout completion and webhook processing. The plugin uses an intermediate redirect so subscription status is updated before redirecting to your success page.
+> **How the checkout redirect works:** The plugin does not redirect straight to your `successUrl`. Instead, Chargebee's `redirect_url` is set to the plugin's internally registered `GET /subscription/success` endpoint, which immediately forwards the user to your original `successUrl`. This gives the plugin a hook point between Chargebee's hosted-page redirect and your application.
 
 #### Switching Plans
 

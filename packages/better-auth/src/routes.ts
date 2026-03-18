@@ -809,6 +809,40 @@ export function listActiveSubscriptions(options: ChargebeeOptions) {
 }
 
 /**
+ * Intermediate redirect endpoint after a Chargebee hosted-page checkout completes.
+ * Chargebee lands here via redirect_url; this endpoint simply forwards the user
+ * to their original successUrl (passed as callbackURL).
+ *
+ * This acts as the bridge between Chargebee's hosted-page redirect and the
+ * application's success page, giving the plugin a hook point between the two.
+ */
+export function subscriptionSuccess(options: ChargebeeOptions) {
+	return createAuthEndpoint(
+		"/subscription/success",
+		{
+			method: "GET",
+			query: z
+				.object({
+					callbackURL: z.string(),
+					subscriptionId: z.string(),
+				})
+				.partial(),
+			metadata: {
+				openapi: {
+					operationId: "subscriptionSuccess",
+				},
+				isAction: false,
+			},
+			use: [originCheck((ctx) => ctx.query?.callbackURL)],
+		},
+		async (ctx) => {
+			const callbackURL = ctx.query?.callbackURL || "/";
+			throw ctx.redirect(getUrl(ctx, callbackURL));
+		},
+	);
+}
+
+/**
  * Callback endpoint after subscription cancellation
  * Checks if cancellation was successful and updates the database
  */

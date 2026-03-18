@@ -1,8 +1,9 @@
-### v1.0.0-beta.4 (2026-03-16)
+### v1.0.0-beta.4 (2026-03-18)
 * * *
 
 ### Feature:
 - Added `getCustomerCreateParams` option to `ChargebeeOptions`, allowing you to return additional Chargebee customer creation params (e.g. `first_name`, `last_name`, phone) for user customers. The callback receives the `user` object and an optional request `ctx` (available when the customer is created on-demand, not during sign-up).
+- Registered the missing `GET /subscription/success` endpoint. Chargebee's `redirect_url` after hosted-page checkout points to this endpoint, which forwards the user to their original `successUrl`. Without this endpoint the post-checkout redirect resulted in a 404.
 - Added `createSubscription` route to initiate a new Chargebee hosted checkout session.
 - Added `updateSubscription` route to update an existing subscription via hosted page.
 - Added `listActiveSubscriptions` route (`GET /subscription/list`) to retrieve the caller's active/trialing subscriptions enriched with plan `limits` and `itemPriceId`.
