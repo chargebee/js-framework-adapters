@@ -6,11 +6,19 @@ import {
 	cancelSubscription,
 	cancelSubscriptionCallback,
 	createPortalSession,
+	createSubscription,
 	getWebhookEndpoint,
-	upgradeSubscription,
+	listActiveSubscriptions,
+	subscriptionSuccess,
+	updateSubscription,
 } from "./routes";
 import { getSchema } from "./schema";
-import type { ChargebeeOptions, WithChargebeeCustomerId } from "./types";
+import type {
+	ChargebeeCustomerCreateParams,
+	ChargebeeOptions,
+	WithChargebeeCustomerId,
+} from "./types";
+import { VERSION } from "./version";
 
 declare module "@better-auth/core" {
 	interface BetterAuthPluginRegistry<AuthOptions, Options> {
@@ -22,28 +30,40 @@ declare module "@better-auth/core" {
 
 export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 	const cb = options.chargebeeClient;
-	// @ts-expect-error - __clientIdentifier is not  typed
-	cb.__clientIdentifier("better-auth 1.0.0-beta.3");
+	// @ts-expect-error - __clientIdentifier is not typed
+	cb.__clientIdentifier(`better-auth ${VERSION}`);
 	return {
 		id: "chargebee",
 		schema: getSchema(options),
 		endpoints: {
 			chargebeeWebhook: getWebhookEndpoint(options),
-			upgradeSubscription: upgradeSubscription(options),
+			createSubscription: createSubscription(options),
+			updateSubscription: updateSubscription(options),
+			subscriptionSuccess: subscriptionSuccess(options),
 			cancelSubscription: cancelSubscription(options),
 			cancelSubscriptionCallback: cancelSubscriptionCallback(options),
 			createPortalSession: createPortalSession(options),
+			listActiveSubscriptions: listActiveSubscriptions(options),
 		},
 		options: options as NoInfer<O>,
 		$ERROR_CODES: CHARGEBEE_ERROR_CODES,
 
 		init(ctx) {
+			if (!options.webhookUsername || !options.webhookPassword) {
+				ctx.logger.warn(
+					"Chargebee plugin: webhookUsername and webhookPassword are not configured. " +
+						"The webhook endpoint is unauthenticated and anyone can POST fake events. " +
+						"Set webhookUsername and webhookPassword in your chargebee plugin options.",
+				);
+			}
+
 			return {
 				options: {
 					databaseHooks: {
 						user: {
 							create: {
 								async after(user) {
+									if (options.organization?.enabled) return;
 									if (!options.createCustomerOnSignUp) return;
 									try {
 										const existing = await cb.customer.list({
@@ -60,14 +80,18 @@ export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 										) {
 											chargebeeCustomer = existing.list[0].customer;
 										} else {
+											let extraCreateParams: ChargebeeCustomerCreateParams = {};
+											if (options.getCustomerCreateParams) {
+												extraCreateParams =
+													await options.getCustomerCreateParams(user);
+											}
 											const result = await cb.customer.create({
 												email: user.email,
-												first_name: user.name?.split(" ")[0],
-												last_name: user.name?.split(" ").slice(1).join(" "),
 												meta_data: customerMetadata.set(undefined, {
 													userId: user.id,
 													customerType: "user",
 												}),
+												...extraCreateParams,
 											});
 											chargebeeCustomer = result.customer;
 										}
@@ -85,12 +109,12 @@ export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 											`Error creating Chargebee customer for user ${user.id}:`,
 											e,
 										);
-										// Silently fail — don't break user signup for billing sync issues
 									}
 								},
 							},
 							update: {
 								async after(user: User & WithChargebeeCustomerId) {
+									if (options.organization?.enabled) return;
 									if (!user.chargebeeCustomerId) return;
 									try {
 										await cb.customer.update(user.chargebeeCustomerId, {
@@ -101,82 +125,74 @@ export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 									}
 								},
 							},
-						},
-						delete: {
-							async before(user: User & WithChargebeeCustomerId) {
-								// Clean up user's subscriptions before deleting user
-								try {
-									// Find all subscriptions for this user
-									const subscriptions = await ctx.adapter.findMany<{
-										id: string;
-										chargebeeSubscriptionId: string | null;
-									}>({
-										model: "subscription",
-										where: [
-											{
-												field: "referenceId",
-												value: user.id,
-											},
-										],
-									});
-
-									// Cancel and delete each subscription
-									for (const subscription of subscriptions) {
-										// Cancel in Chargebee first (if subscription exists there)
-										if (subscription.chargebeeSubscriptionId) {
-											try {
-												await cb.subscription.cancel(
-													subscription.chargebeeSubscriptionId,
-													{
-														end_of_term: false, // Cancel immediately
-													},
-												);
-												ctx.logger.info(
-													`Cancelled Chargebee subscription ${subscription.chargebeeSubscriptionId}`,
-												);
-											} catch (e) {
-												// Log but continue - subscription might already be cancelled
-												const errorMessage =
-													e instanceof Error ? e.message : String(e);
-												ctx.logger.warn(
-													`Failed to cancel subscription in Chargebee: ${errorMessage}`,
-												);
-											}
-										}
-
-										// Delete subscription items
-										await ctx.adapter.deleteMany({
-											model: "subscriptionItem",
-											where: [
-												{
-													field: "subscriptionId",
-													value: subscription.id,
-												},
-											],
-										});
-
-										// Delete subscription
-										await ctx.adapter.deleteMany({
+							delete: {
+								async before(user: User & WithChargebeeCustomerId) {
+									try {
+										const subscriptions = await ctx.adapter.findMany<{
+											id: string;
+											chargebeeSubscriptionId: string | null;
+										}>({
 											model: "subscription",
 											where: [
 												{
-													field: "id",
-													value: subscription.id,
+													field: "referenceId",
+													value: user.id,
 												},
 											],
 										});
-									}
 
-									ctx.logger.info(
-										`Cleaned up ${subscriptions.length} subscription(s) for user ${user.id}`,
-									);
-								} catch (e) {
-									ctx.logger.error(
-										`Error cleaning up subscriptions for user ${user.id}:`,
-										e,
-									);
-									// Don't throw - allow user deletion to proceed
-								}
+										for (const subscription of subscriptions) {
+											if (subscription.chargebeeSubscriptionId) {
+												try {
+													await cb.subscription.cancel(
+														subscription.chargebeeSubscriptionId,
+														{
+															end_of_term: false,
+														},
+													);
+													ctx.logger.info(
+														`Cancelled Chargebee subscription ${subscription.chargebeeSubscriptionId}`,
+													);
+												} catch (e) {
+													const errorMessage =
+														e instanceof Error ? e.message : String(e);
+													ctx.logger.warn(
+														`Failed to cancel subscription in Chargebee: ${errorMessage}`,
+													);
+												}
+											}
+
+											await ctx.adapter.deleteMany({
+												model: "subscriptionItem",
+												where: [
+													{
+														field: "subscriptionId",
+														value: subscription.id,
+													},
+												],
+											});
+
+											await ctx.adapter.deleteMany({
+												model: "subscription",
+												where: [
+													{
+														field: "id",
+														value: subscription.id,
+													},
+												],
+											});
+										}
+
+										ctx.logger.info(
+											`Cleaned up ${subscriptions.length} subscription(s) for user ${user.id}`,
+										);
+									} catch (e) {
+										ctx.logger.error(
+											`Error cleaning up subscriptions for user ${user.id}:`,
+											e,
+										);
+									}
+								},
 							},
 						},
 					},

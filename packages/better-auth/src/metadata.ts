@@ -27,24 +27,3 @@ export const customerMetadata = {
 		};
 	},
 };
-
-export const subscriptionMetadata = {
-	set(
-		userMetadata: Record<string, string> | undefined,
-		values: { referenceId: string; subscriptionId: string; plan: string },
-	): Record<string, string> {
-		const result = { ...(userMetadata || {}) };
-		result.referenceId = values.referenceId;
-		result.subscriptionId = values.subscriptionId;
-		result.plan = values.plan;
-		return result;
-	},
-
-	get(metadata: Record<string, string> | undefined) {
-		return {
-			referenceId: metadata?.referenceId,
-			subscriptionId: metadata?.subscriptionId,
-			plan: metadata?.plan,
-		};
-	},
-};

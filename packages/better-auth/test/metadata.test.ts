@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { customerMetadata, subscriptionMetadata } from "../src/metadata";
+import { customerMetadata } from "../src/metadata";
 
 describe("metadata - customerMetadata", () => {
 	describe("set", () => {
@@ -111,93 +111,6 @@ describe("metadata - customerMetadata", () => {
 			expect(result.userId).toBeUndefined();
 			expect(result.customerType).toBeUndefined();
 			expect(result.organizationId).toBeUndefined();
-		});
-	});
-});
-
-describe("metadata - subscriptionMetadata", () => {
-	describe("set", () => {
-		it("should set subscription values", () => {
-			const result = subscriptionMetadata.set(undefined, {
-				referenceId: "user_123",
-				subscriptionId: "sub_456",
-				plan: "pro-plan",
-			});
-
-			expect(result.referenceId).toBe("user_123");
-			expect(result.subscriptionId).toBe("sub_456");
-			expect(result.plan).toBe("pro-plan");
-		});
-
-		it("should merge user metadata with subscription values", () => {
-			const userMetadata = {
-				customField: "custom_value",
-				anotherField: "another_value",
-			};
-
-			const result = subscriptionMetadata.set(userMetadata, {
-				referenceId: "user_123",
-				subscriptionId: "sub_456",
-				plan: "pro-plan",
-			});
-
-			expect(result.referenceId).toBe("user_123");
-			expect(result.subscriptionId).toBe("sub_456");
-			expect(result.plan).toBe("pro-plan");
-			expect(result.customField).toBe("custom_value");
-			expect(result.anotherField).toBe("another_value");
-		});
-
-		it("should override subscription fields if present in user metadata", () => {
-			const userMetadata = {
-				referenceId: "old_user",
-				subscriptionId: "old_sub",
-				plan: "old_plan",
-			};
-
-			const result = subscriptionMetadata.set(userMetadata, {
-				referenceId: "new_user_123",
-				subscriptionId: "new_sub_456",
-				plan: "new-pro-plan",
-			});
-
-			expect(result.referenceId).toBe("new_user_123");
-			expect(result.subscriptionId).toBe("new_sub_456");
-			expect(result.plan).toBe("new-pro-plan");
-		});
-	});
-
-	describe("get", () => {
-		it("should extract subscription fields from metadata", () => {
-			const metadata = {
-				referenceId: "user_123",
-				subscriptionId: "sub_456",
-				plan: "pro-plan",
-				extra: "ignored",
-			};
-
-			const result = subscriptionMetadata.get(metadata);
-
-			expect(result.referenceId).toBe("user_123");
-			expect(result.subscriptionId).toBe("sub_456");
-			expect(result.plan).toBe("pro-plan");
-			expect(result).not.toHaveProperty("extra");
-		});
-
-		it("should handle undefined metadata", () => {
-			const result = subscriptionMetadata.get(undefined);
-
-			expect(result.referenceId).toBeUndefined();
-			expect(result.subscriptionId).toBeUndefined();
-			expect(result.plan).toBeUndefined();
-		});
-
-		it("should handle empty metadata object", () => {
-			const result = subscriptionMetadata.get({});
-
-			expect(result.referenceId).toBeUndefined();
-			expect(result.subscriptionId).toBeUndefined();
-			expect(result.plan).toBeUndefined();
 		});
 	});
 });

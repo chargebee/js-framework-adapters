@@ -118,9 +118,9 @@ const subscriptionItemSchema = {
 
 export function getSchema(options: ChargebeeOptions) {
 	return {
-		...userSchema,
-		...subscriptionSchema,
-		...subscriptionItemSchema,
+		...(!options.organization?.enabled ? userSchema : {}),
+		...(options.subscription?.enabled ? subscriptionSchema : {}),
+		...(options.subscription?.enabled ? subscriptionItemSchema : {}),
 		...(options.organization?.enabled ? orgSchema : {}),
 	};
 }

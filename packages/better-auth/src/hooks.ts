@@ -11,7 +11,7 @@ import type {
 	Subscription,
 	SubscriptionOptions,
 } from "./types";
-import { getPlanByItemPriceId } from "./utils";
+import { getPlanByItemPriceId, isActiveOrTrialing } from "./utils";
 
 /**
  * Find organization or user by chargebeeCustomerId.
@@ -112,9 +112,9 @@ export async function onSubscriptionCreated(
 
 		if (!plan) {
 			ctx.context.logger.warn(
-				`Chargebee webhook warning: No matching plan found for itemPriceId: ${itemPriceId}`,
+				`Chargebee webhook warning: No matching plan found for itemPriceId: ${itemPriceId}. ` +
+					`Subscription will still be tracked but plan-specific features won't apply.`,
 			);
-			return;
 		}
 
 		const seats = primaryItem.quantity || 1;
@@ -221,9 +221,8 @@ export async function onSubscriptionUpdated(
 				where: [{ field: "chargebeeCustomerId", value: customerId }],
 			});
 			if (subs.length > 1) {
-				const activeSub = subs.find(
-					(sub: Subscription) =>
-						sub.status === "active" || sub.status === "in_trial",
+				const activeSub = subs.find((sub: Subscription) =>
+					isActiveOrTrialing(sub),
 				);
 				if (!activeSub) {
 					ctx.context.logger.warn(

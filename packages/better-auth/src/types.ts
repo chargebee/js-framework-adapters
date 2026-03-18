@@ -5,6 +5,7 @@ import type {
 	Event as ChargebeeEvent,
 	Subscription as ChargebeeSubscription,
 	Customer,
+	WebhookHandler,
 } from "chargebee";
 
 export interface ChargebeePlan {
@@ -13,8 +14,6 @@ export interface ChargebeePlan {
 	itemId?: string;
 	itemFamilyId?: string;
 	type: "plan" | "addon" | "charges";
-	trialPeriod?: number;
-	trialPeriodUnit?: "day" | "month";
 	billingCycles?: number;
 	/**
 	 * Free trial configuration
@@ -36,6 +35,7 @@ export type SubscriptionStatus = ChargebeeSubscription["status"];
 export type CustomerType = "user" | "organization";
 
 export type AuthorizeReferenceAction =
+	| "create-subscription"
 	| "upgrade-subscription"
 	| "list-subscription"
 	| "cancel-subscription"
@@ -77,7 +77,7 @@ export interface OrganizationCustomerCreateParams {
 export type SubscriptionOptions = {
 	enabled: boolean;
 	plans: ChargebeePlan[] | (() => Promise<ChargebeePlan[]>);
-	preventDuplicateTrails?: boolean;
+	preventDuplicateTrials?: boolean;
 	requireEmailVerification?: boolean;
 
 	// subscription lifecycle
@@ -146,8 +146,20 @@ export interface ChargebeeOptions {
 	webhookUsername?: string;
 	webhookPassword?: string;
 	createCustomerOnSignUp?: boolean;
+	/**
+	 * Return additional params to pass to `cb.customer.create` for user customers.
+	 * Use this to pass fields like `first_name`, `last_name`, or any other
+	 * Chargebee customer params. The `ctx` argument is only available when the
+	 * customer is created on-demand (e.g. at subscription time), not during sign-up.
+	 */
+	getCustomerCreateParams?: (
+		user: User,
+		ctx?: Record<string, unknown>,
+	) =>
+		| Promise<Partial<ChargebeeCustomerCreateParams>>
+		| Partial<ChargebeeCustomerCreateParams>;
 	onCustomerCreate?: (params: CustomerCreateParams) => Promise<void> | void;
-	onEvent?: (event: WebhookEvent) => Promise<void> | void;
+	webhookHandler?: (handler: WebhookHandler) => void;
 	subscription?: SubscriptionOptions;
 	organization?: {
 		enabled: boolean;
