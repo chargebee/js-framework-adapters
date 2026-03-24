@@ -13,7 +13,7 @@ export interface ChargebeePlan {
 	itemPriceId: string;
 	itemId?: string;
 	itemFamilyId?: string;
-	type: "plan" | "addon" | "charges";
+	type: "plan" | "addon" | "charge";
 	billingCycles?: number;
 	/**
 	 * Free trial configuration

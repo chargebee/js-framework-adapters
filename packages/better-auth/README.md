@@ -804,7 +804,7 @@ chargebee({
 | `itemPriceId`     | `string` | Chargebee item price ID. **Required.**                |
 | `itemId`          | `string` | Chargebee item ID. Optional.                          |
 | `itemFamilyId`    | `string` | Chargebee item family ID. Optional.                   |
-| `type`            | `string` | `"plan"` \| `"addon"` \| `"charges"`. **Required.**   |
+| `type`            | `string` | `"plan"` \| `"addon"` \| `"charge"`. **Required.**   |
 | `limits`          | `object` | Limits (e.g. `{ projects: 10, storage: 5 }`).         |
 | `freeTrial`       | `object` | Free trial config. See [below](#free-trial-configuration). |
 | `trialPeriod`     | `number` | Trial period length. Optional.                        |

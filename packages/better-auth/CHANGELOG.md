@@ -1,3 +1,11 @@
+### v1.0.1 (2026-03-24)
+* * *
+
+### Bug:
+- Renamed `ChargebeePlan.type` value from `"charges"` to `"charge"` to match Chargebee's item type enum and align with the existing `SubscriptionItemType`.
+
+---
+
 ### v1.0.0 (2026-03-24)
 * * *
 
