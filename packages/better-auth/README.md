@@ -18,6 +18,10 @@ The Chargebee plugin integrates [Chargebee's](https://www.chargebee.com) subscri
 - Hosted checkout and portal via Chargebee Hosted Pages
 - Self-service billing portal for managing payment methods, invoices, and subscriptions
 
+## Requirements
+
+- **Node.js** `>=22.0.0`
+
 ## Installation
 
 ### Step 1: Install the plugin

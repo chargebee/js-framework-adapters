@@ -1,3 +1,13 @@
+### v1.0.0 (2026-03-24)
+* * *
+
+### Release:
+- First stable release of `@chargebee/better-auth`.
+
+### Docs:
+- Added **Requirements** section to README documenting the minimum supported Node.js version (`>=22.0.0`).
+
+
 ### v1.0.0-beta.5 (2026-03-18)
 * * *
 
