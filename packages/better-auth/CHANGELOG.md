@@ -1,3 +1,11 @@
+### v1.1.0 (2026-04-22)
+* * *
+
+### Dependency
+- Bumped the `chargebee` peer dependency to `^3.23.1`.
+
+---
+
 ### v1.0.1 (2026-03-24)
 * * *
 
