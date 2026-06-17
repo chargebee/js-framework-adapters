@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
  */
 export function deduplicationId(requestId: string | undefined): string {
 	if (requestId && requestId.length > 0) {
-		return `cb-usage-meter:${requestId}`;
+		return `${requestId}`;
 	}
-	return `cb-usage-meter:${randomUUID()}`;
+	return `${randomUUID()}`;
 }

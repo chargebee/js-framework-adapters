@@ -9,7 +9,7 @@ import { Batcher } from "./batcher.js";
 import { ContextStore } from "./context.js";
 import { deduplicationId } from "./dedup.js";
 import { CHARGEBEE_BATCH_CEILING, ChargebeeEmitter } from "./emitter.js";
-import { defaultOnError } from "./errors.js";
+import { defaultOnError, toError } from "./errors.js";
 import {
 	type Adapter,
 	type CallContext,
@@ -123,10 +123,7 @@ export class UsageMeter {
 				try {
 					return adapter.wrap(client, this.wrapCtx) as T;
 				} catch (err) {
-					this.onError(
-						err instanceof Error ? err : new Error(String(err)),
-						"wrap",
-					);
+					this.onError(toError(err), "wrap");
 					return client;
 				}
 			}
@@ -161,10 +158,7 @@ export class UsageMeter {
 		try {
 			await this.batcher.flush();
 		} catch (err) {
-			this.onError(
-				err instanceof Error ? err : new Error(String(err)),
-				"shutdown",
-			);
+			this.onError(toError(err), "shutdown");
 		}
 		this.batcher.stop();
 	}

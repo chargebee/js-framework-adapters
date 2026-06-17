@@ -1,4 +1,5 @@
 import type Chargebee from "chargebee";
+import { toError } from "./errors.js";
 import type { ErrorSite } from "./types.js";
 
 /** A pre-aggregated usage window for a single feature on a subscription. */
@@ -67,10 +68,7 @@ export class UsageSummaryClient {
 				nextOffset: response.next_offset,
 			};
 		} catch (err) {
-			this.onError(
-				err instanceof Error ? err : new Error(String(err)),
-				"getUsageSummary",
-			);
+			this.onError(toError(err), "getUsageSummary");
 			throw err;
 		}
 	}

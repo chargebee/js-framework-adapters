@@ -1,3 +1,4 @@
+import { toError } from "./errors.js";
 import type {
 	CallContext,
 	CanonicalUsage,
@@ -132,10 +133,7 @@ function wrapCall(
 				cleanArgs = extracted.cleanArgs;
 				callContext = extracted.context;
 			} catch (err) {
-				ctx.onError(
-					err instanceof Error ? err : new Error(String(err)),
-					"wrap",
-				);
+				ctx.onError(toError(err), "wrap");
 			}
 		}
 
@@ -246,20 +244,14 @@ function createPassthroughIterable<Chunk>(
 						acc,
 					);
 				} catch (err) {
-					ctx.onError(
-						err instanceof Error ? err : new Error(String(err)),
-						"extractUsage",
-					);
+					ctx.onError(toError(err), "extractUsage");
 					return;
 				}
 				if (!usage || hasNoUsage(usage)) return;
 				try {
 					ctx.record(usage, callContext);
 				} catch (err) {
-					ctx.onError(
-						err instanceof Error ? err : new Error(String(err)),
-						"record",
-					);
+					ctx.onError(toError(err), "record");
 				}
 			};
 
@@ -276,10 +268,7 @@ function createPassthroughIterable<Chunk>(
 									acc,
 								);
 							} catch (err) {
-								ctx.onError(
-									err instanceof Error ? err : new Error(String(err)),
-									"extractUsage",
-								);
+								ctx.onError(toError(err), "extractUsage");
 							}
 						}
 						return r;
@@ -316,17 +305,14 @@ function recordSafely(
 	try {
 		usage = extractUsage(response);
 	} catch (err) {
-		ctx.onError(
-			err instanceof Error ? err : new Error(String(err)),
-			"extractUsage",
-		);
+		ctx.onError(toError(err), "extractUsage");
 		return;
 	}
 	if (!usage || hasNoUsage(usage)) return;
 	try {
 		ctx.record(usage, callContext);
 	} catch (err) {
-		ctx.onError(err instanceof Error ? err : new Error(String(err)), "record");
+		ctx.onError(toError(err), "record");
 	}
 }
 

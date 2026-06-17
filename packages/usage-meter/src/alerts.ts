@@ -1,3 +1,4 @@
+import { toError } from "./errors.js";
 import type { ErrorSite } from "./types.js";
 
 /** Chargebee's documented `alert_status` values. */
@@ -89,7 +90,7 @@ export async function dispatchAlertWebhook(
 		try {
 			await call();
 		} catch (err) {
-			const wrapped = err instanceof Error ? err : new Error(String(err));
+			const wrapped = toError(err);
 			onError(wrapped, "alertHandler");
 			throw wrapped;
 		}
