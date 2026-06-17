@@ -8,3 +8,4 @@ overrides:
   chargebee-init: link:packages/cli
   '@chargebee/express': link:packages/express
   '@chargebee/nextjs': link:packages/nextjs
+  '@chargebee/usage-meter': link:packages/usage-meter

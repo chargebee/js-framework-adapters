@@ -1,0 +1,53 @@
+{
+  "name": "@chargebee/usage-meter",
+  "version": "1.0.0",
+  "description": "Drop-in LLM usage meter that streams normalized token usage to Chargebee via the Usage Events API.",
+  "author": {
+    "name": "Chargebee",
+    "email": "dx@chargebee.com"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./ai-sdk": {
+      "types": "./src/ai-sdk.ts",
+      "default": "./dist/ai-sdk.js"
+    },
+    "./adapters/openai": {
+      "types": "./src/adapters/openai.ts",
+      "default": "./dist/adapters/openai.js"
+    },
+    "./adapters/anthropic": {
+      "types": "./src/adapters/anthropic.ts",
+      "default": "./dist/adapters/anthropic.js"
+    },
+    "./adapters/bedrock": {
+      "types": "./src/adapters/bedrock.ts",
+      "default": "./dist/adapters/bedrock.js"
+    },
+    "./adapters/gemini": {
+      "types": "./src/adapters/gemini.ts",
+      "default": "./dist/adapters/gemini.js"
+    }
+  },
+  "files": ["dist"],
+  "peerDependencies": {
+    "chargebee": "^3.10.0"
+  },
+  "peerDependenciesMeta": {
+    "chargebee": { "optional": false }
+  },
+  "devDependencies": {
+    "chargebee": "^3.10.0"
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "prewatch": "pnpm build",
+    "watch": "tsc --build --watch"
+  }
+}

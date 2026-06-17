@@ -6,8 +6,9 @@ settings:
 
 overrides:
   chargebee-init: link:packages/cli
-  '@chargebee/nextjs': link:packages/nextjs
   '@chargebee/express': link:packages/express
+  '@chargebee/nextjs': link:packages/nextjs
+  '@chargebee/usage-meter': link:packages/usage-meter
 
 importers:
 
@@ -125,6 +126,12 @@ importers:
       next:
         specifier: ^15.3.3
         version: 15.3.3(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+
+  packages/usage-meter:
+    devDependencies:
+      chargebee:
+        specifier: ^3.10.0
+        version: 3.23.1
 
 packages:
 
@@ -1889,6 +1896,7 @@ packages:
   prebuild-install@7.1.3:
     resolution: {integrity: sha512-8Mf2cbV7x1cXPUILADGI3wuhfqWvtiLA1iclTDbFRZkgRQS0NqsPZphna9V+HyTEadheuPmjaJMsbzKQFOzLug==}
     engines: {node: '>=10'}
+    deprecated: No longer maintained. Please contact the author of the relevant native addon; alternatives are available.
     hasBin: true
 
   prisma@7.4.2:
