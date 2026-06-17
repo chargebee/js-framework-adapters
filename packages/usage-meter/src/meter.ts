@@ -244,7 +244,7 @@ export class UsageMeter {
 		const event: PendingUsageEvent = {
 			deduplication_id: deduplicationId(resolved.requestId),
 			subscription_id: resolved.subscriptionId,
-			usage_timestamp: Math.floor(resolved.usageTimestampMs / 1000),
+			usage_timestamp: resolved.usageTimestampMs,
 			properties,
 		};
 		this.batcher.enqueue(event);
