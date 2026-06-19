@@ -35,19 +35,29 @@
       "default": "./dist/adapters/gemini.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "peerDependencies": {
     "chargebee": "^3.10.0"
   },
   "peerDependenciesMeta": {
-    "chargebee": { "optional": false }
+    "chargebee": {
+      "optional": false
+    }
   },
   "devDependencies": {
-    "chargebee": "^3.10.0"
+    "@vitest/coverage-v8": "^4.0.18",
+    "chargebee": "^3.10.0",
+    "vitest": "^4.0.18"
   },
   "scripts": {
     "build": "tsc --build",
     "prewatch": "pnpm build",
-    "watch": "tsc --build --watch"
+    "watch": "tsc --build --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit"
   }
 }
