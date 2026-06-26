@@ -212,8 +212,15 @@ export { CHARGEBEE_ERROR_CODES } from "./error-codes";
 export type {
 	ChargebeeOptions,
 	ChargebeePlan,
+	ChargebeeWebhookEventBus,
 	Subscription,
 	SubscriptionOptions,
 	SubscriptionStatus,
+	WebhookEvent,
 	WithChargebeeCustomerId,
 } from "./types";
+export {
+	type ChargebeeWebhookProcessor,
+	type ChargebeeWebhookProcessorSource,
+	createChargebeeWebhookProcessor,
+} from "./webhook-processor";
