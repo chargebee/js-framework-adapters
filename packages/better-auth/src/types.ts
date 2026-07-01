@@ -156,48 +156,48 @@ export interface ChargebeeWebhookEventBus {
 export type ChargebeeCustomerCreateParams = Partial<Customer.CreateInputParam>;
 
 export interface ChargebeeOptions {
-		chargebeeClient: InstanceType<typeof Chargebee>;
-		webhookUsername?: string;
-		webhookPassword?: string;
-		createCustomerOnSignUp?: boolean;
-		/**
-		 * Return additional params to pass to `cb.customer.create` for user customers.
-		 * Use this to pass fields like `first_name`, `last_name`, or any other
-		 * Chargebee customer params. The `ctx` argument is only available when the
-		 * customer is created on-demand (e.g. at subscription time), not during sign-up.
-		 */
+	chargebeeClient: InstanceType<typeof Chargebee>;
+	webhookUsername?: string;
+	webhookPassword?: string;
+	createCustomerOnSignUp?: boolean;
+	/**
+	 * Return additional params to pass to `cb.customer.create` for user customers.
+	 * Use this to pass fields like `first_name`, `last_name`, or any other
+	 * Chargebee customer params. The `ctx` argument is only available when the
+	 * customer is created on-demand (e.g. at subscription time), not during sign-up.
+	 */
+	getCustomerCreateParams?: (
+		user: User,
+		ctx?: Record<string, unknown>,
+	) =>
+		| Promise<Partial<ChargebeeCustomerCreateParams>>
+		| Partial<ChargebeeCustomerCreateParams>;
+	onCustomerCreate?: (params: CustomerCreateParams) => Promise<void> | void;
+	webhookHandler?: (handler: WebhookHandler) => void;
+	/**
+	 * Optional event bus used to decouple webhook ingestion from processing.
+	 *
+	 * When set, the webhook endpoint in the app is exptected to validate and
+	 * parses each event and calls `webhookEventBus.publish(event)` (typically pushing it onto an application
+	 * queue) instead of running the DB-sync hooks inline. Process queued events
+	 * later with `createChargebeeWebhookProcessor`.
+	 *
+	 * When not set, events are processed synchronously within the request.
+	 */
+	webhookEventBus?: ChargebeeWebhookEventBus;
+	subscription?: SubscriptionOptions;
+	organization?: {
+		enabled: boolean;
 		getCustomerCreateParams?: (
-			user: User,
-			ctx?: Record<string, unknown>,
-		) =>
-			| Promise<Partial<ChargebeeCustomerCreateParams>>
-			| Partial<ChargebeeCustomerCreateParams>;
-		onCustomerCreate?: (params: CustomerCreateParams) => Promise<void> | void;
-		webhookHandler?: (handler: WebhookHandler) => void;
-		/**
-		 * Optional event bus used to decouple webhook ingestion from processing.
-		 *
-		 * When set, the webhook endpoint in the app is exptected to validate and
-		 * parses each event and calls `webhookEventBus.publish(event)` (typically pushing it onto an application
-		 * queue) instead of running the DB-sync hooks inline. Process queued events
-		 * later with `createChargebeeWebhookProcessor`.
-		 *
-		 * When not set, events are processed synchronously within the request.
-		 */
-		webhookEventBus?: ChargebeeWebhookEventBus;
-		subscription?: SubscriptionOptions;
-		organization?: {
-			enabled: boolean;
-			getCustomerCreateParams?: (
-				organization: Organization & WithChargebeeCustomerId,
-				ctx: Record<string, unknown>,
-			) => Promise<Partial<ChargebeeCustomerCreateParams>>;
-			onCustomerCreate?: (
-				params: OrganizationCustomerCreateParams,
-				ctx: Record<string, unknown>,
-			) => Promise<void> | void;
-		};
-	}
+			organization: Organization & WithChargebeeCustomerId,
+			ctx: Record<string, unknown>,
+		) => Promise<Partial<ChargebeeCustomerCreateParams>>;
+		onCustomerCreate?: (
+			params: OrganizationCustomerCreateParams,
+			ctx: Record<string, unknown>,
+		) => Promise<void> | void;
+	};
+}
 
 export interface Subscription {
 	id: string;
