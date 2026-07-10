@@ -23,7 +23,10 @@ import {
 	isActiveOrTrialing,
 	isPendingCancel,
 } from "./utils";
-import { createWebhookHandler } from "./webhook-handler";
+import {
+	createWebhookHandler,
+	createWebhookPublishHandler,
+} from "./webhook-handler";
 
 export function getWebhookEndpoint(options: ChargebeeOptions) {
 	return createAuthEndpoint(
@@ -33,22 +36,30 @@ export function getWebhookEndpoint(options: ChargebeeOptions) {
 			metadata: { isAction: false },
 		},
 		async (ctx) => {
-			// Create webhook handler with better-auth context
-			const handler = createWebhookHandler(
-				options,
-				{
-					context: ctx.context as Record<string, unknown>,
-					adapter: ctx.context.adapter as unknown as {
-						findOne: <T = unknown>(params: unknown) => Promise<T | null>;
-						findMany: <T = unknown>(params: unknown) => Promise<T[]>;
-						update: (params: unknown) => Promise<unknown>;
-						deleteMany: (params: unknown) => Promise<void>;
-						create: (params: unknown) => Promise<unknown>;
-					},
-					logger: ctx.context.logger,
-				},
-				ctx as any,
-			);
+			// When an event bus is configured, validate + parse the event and
+			// forward it to the bus (e.g. an application queue) instead of running
+			// the DB-sync hooks inline. Otherwise process the event synchronously.
+			const handler = options.webhookEventBus
+				? createWebhookPublishHandler(
+						options,
+						options.webhookEventBus,
+						ctx.context.logger,
+					)
+				: createWebhookHandler(
+						options,
+						{
+							context: ctx.context as Record<string, unknown>,
+							adapter: ctx.context.adapter as unknown as {
+								findOne: <T = unknown>(params: unknown) => Promise<T | null>;
+								findMany: <T = unknown>(params: unknown) => Promise<T[]>;
+								update: (params: unknown) => Promise<unknown>;
+								deleteMany: (params: unknown) => Promise<void>;
+								create: (params: unknown) => Promise<unknown>;
+							},
+							logger: ctx.context.logger,
+						},
+						ctx as any,
+					);
 
 			// Let user register custom event listeners on the handler
 			options.webhookHandler?.(handler);

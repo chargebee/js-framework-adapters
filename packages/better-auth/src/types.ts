@@ -2,8 +2,8 @@ import type { Session, User } from "better-auth";
 import type { Organization } from "better-auth/plugins/organization";
 import type Chargebee from "chargebee";
 import type {
-	Event as ChargebeeEvent,
 	Subscription as ChargebeeSubscription,
+	WebhookEvent as ChargebeeWebhookEvent,
 	Customer,
 	WebhookHandler,
 } from "chargebee";
@@ -136,7 +136,21 @@ export type SubscriptionOptions = {
 	) => Promise<boolean>;
 };
 
-export type WebhookEvent = ChargebeeEvent;
+export type WebhookEvent = ChargebeeWebhookEvent;
+
+/**
+ * Event bus seam used to decouple webhook ingestion from processing.
+ *
+ * When provided via {@link ChargebeeOptions.webhookEventBus}, the webhook
+ * endpoint validates and parses each incoming Chargebee event and then calls
+ * `publish` instead of running the DB-sync hooks inline. The application is
+ * expected to push the event onto its own queue and later process it from a
+ * consumer using `createChargebeeWebhookProcessor`.
+ */
+export interface ChargebeeWebhookEventBus {
+	/** Called at the HTTP endpoint for every validated, parsed event. */
+	publish(event: WebhookEvent): Promise<void> | void;
+}
 
 // Use native Chargebee customer creation params
 export type ChargebeeCustomerCreateParams = Partial<Customer.CreateInputParam>;
@@ -160,6 +174,17 @@ export interface ChargebeeOptions {
 		| Partial<ChargebeeCustomerCreateParams>;
 	onCustomerCreate?: (params: CustomerCreateParams) => Promise<void> | void;
 	webhookHandler?: (handler: WebhookHandler) => void;
+	/**
+	 * Optional event bus used to decouple webhook ingestion from processing.
+	 *
+	 * When set, the webhook endpoint in the app is exptected to validate and
+	 * parses each event and calls `webhookEventBus.publish(event)` (typically pushing it onto an application
+	 * queue) instead of running the DB-sync hooks inline. Process queued events
+	 * later with `createChargebeeWebhookProcessor`.
+	 *
+	 * When not set, events are processed synchronously within the request.
+	 */
+	webhookEventBus?: ChargebeeWebhookEventBus;
 	subscription?: SubscriptionOptions;
 	organization?: {
 		enabled: boolean;

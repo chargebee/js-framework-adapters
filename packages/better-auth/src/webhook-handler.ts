@@ -1,6 +1,8 @@
 import type { GenericEndpointContext } from "@better-auth/core";
 import {
 	basicAuthValidator,
+	type Subscription as ChargebeeSubscription,
+	type Customer,
 	WebhookAuthenticationError,
 	type WebhookEvent,
 	WebhookEventType,
@@ -11,7 +13,12 @@ import {
 	onSubscriptionDeleted,
 	onSubscriptionUpdated,
 } from "./hooks";
-import type { ChargebeeOptions, Logger, Subscription } from "./types";
+import type {
+	ChargebeeOptions,
+	ChargebeeWebhookEventBus,
+	Logger,
+	Subscription,
+} from "./types";
 
 /**
  * Context object that wraps better-auth context for webhook handlers
@@ -34,6 +41,120 @@ interface WebhookResponse {
 }
 
 /**
+ * Builds the Basic Auth request validator for the Chargebee webhook handler,
+ * or `undefined` when no credentials are configured.
+ */
+function buildRequestValidator(options: ChargebeeOptions) {
+	return options.webhookUsername && options.webhookPassword
+		? basicAuthValidator((username, password) => {
+				return (
+					username === options.webhookUsername &&
+					password === options.webhookPassword
+				);
+			})
+		: undefined;
+}
+
+/**
+ * Chargebee event types the plugin processes. These are registered on the
+ * publish handler so that every relevant event is forwarded to the event bus.
+ */
+const HANDLED_EVENT_TYPES = [
+	WebhookEventType.SubscriptionCreated,
+	WebhookEventType.SubscriptionActivated,
+	WebhookEventType.SubscriptionChanged,
+	WebhookEventType.SubscriptionRenewed,
+	WebhookEventType.SubscriptionStarted,
+	WebhookEventType.SubscriptionCancelled,
+	WebhookEventType.SubscriptionScheduledCancellationRemoved,
+	WebhookEventType.CustomerDeleted,
+] as const;
+
+/**
+ * Dispatches a single validated Chargebee webhook event to the appropriate
+ * subscription/customer hook.
+ *
+ * This contains the event-type to hook mapping and is shared by both the
+ * synchronous webhook handler ({@link createWebhookHandler}) and the
+ * asynchronous queue consumer ({@link createChargebeeWebhookProcessor}).
+ *
+ * @param event - The parsed Chargebee webhook event
+ * @param endpointCtx - Better-auth endpoint context (provides adapter/logger to hooks)
+ * @param ctx - Better-auth webhook context wrapper (used by customer deletion)
+ * @param options - Chargebee plugin options
+ */
+export async function dispatchWebhookEvent(
+	event: WebhookEvent,
+	endpointCtx: GenericEndpointContext,
+	ctx: BetterAuthWebhookContext,
+	options: ChargebeeOptions,
+): Promise<void> {
+	// The event type is narrowed via the switch below, but `content` is a union
+	// across all event types, so we read the subscription/customer fields the
+	// subscription hooks need through a focused view.
+	const content = event.content as {
+		subscription?: ChargebeeSubscription;
+		customer?: Customer;
+	};
+
+	switch (event.event_type) {
+		case WebhookEventType.SubscriptionCreated: {
+			if (content.subscription && content.customer) {
+				await onSubscriptionCreated(
+					endpointCtx,
+					options,
+					content.subscription,
+					content.customer,
+				);
+			}
+			return;
+		}
+		case WebhookEventType.SubscriptionActivated:
+		case WebhookEventType.SubscriptionStarted: {
+			if (content.subscription && content.customer) {
+				await onSubscriptionComplete(
+					endpointCtx,
+					options,
+					content.subscription,
+					content.customer,
+				);
+			}
+			return;
+		}
+		case WebhookEventType.SubscriptionChanged:
+		case WebhookEventType.SubscriptionRenewed:
+		case WebhookEventType.SubscriptionScheduledCancellationRemoved: {
+			if (content.subscription && content.customer) {
+				await onSubscriptionUpdated(
+					endpointCtx,
+					options,
+					content.subscription,
+					content.customer,
+				);
+			}
+			return;
+		}
+		case WebhookEventType.SubscriptionCancelled: {
+			if (content.subscription) {
+				await onSubscriptionDeleted(endpointCtx, options, content.subscription);
+			}
+			return;
+		}
+		case WebhookEventType.CustomerDeleted: {
+			await handleCustomerDeletion(
+				event as unknown as WebhookEvent<WebhookEventType.CustomerDeleted>,
+				ctx,
+				options,
+			);
+			return;
+		}
+		default: {
+			ctx.logger.info(`Unhandled Chargebee webhook event: ${event.event_type}`);
+		}
+	}
+}
+
+/**
  * Creates and configures a Chargebee webhook handler with typed event listeners
  * @param options - Chargebee plugin options
  * @param ctx - Better-auth context
@@ -47,15 +168,7 @@ export function createWebhookHandler(
 	const cb = options.chargebeeClient;
 
 	const handler = cb.webhooks.createHandler<Request, WebhookResponse>({
-		requestValidator:
-			options.webhookUsername && options.webhookPassword
-				? basicAuthValidator((username, password) => {
-						return (
-							username === options.webhookUsername &&
-							password === options.webhookPassword
-						);
-					})
-				: undefined,
+		requestValidator: buildRequestValidator(options),
 	});
 
 	/**
@@ -64,15 +177,7 @@ export function createWebhookHandler(
 	handler.on(
 		WebhookEventType.SubscriptionCreated,
 		async ({ event, response }) => {
-			const content = event.content;
-			if (content.subscription && content.customer) {
-				await onSubscriptionCreated(
-					endpointCtx,
-					options,
-					content.subscription,
-					content.customer,
-				);
-			}
+			await dispatchWebhookEvent(event, endpointCtx, ctx, options);
 			response?.status(200).send("OK");
 		},
 	);
@@ -80,15 +185,7 @@ export function createWebhookHandler(
 	handler.on(
 		WebhookEventType.SubscriptionActivated,
 		async ({ event, response }) => {
-			const content = event.content;
-			if (content.subscription && content.customer) {
-				await onSubscriptionComplete(
-					endpointCtx,
-					options,
-					content.subscription,
-					content.customer,
-				);
-			}
+			await dispatchWebhookEvent(event, endpointCtx, ctx, options);
 			response?.status(200).send("OK");
 		},
 	);
@@ -96,15 +193,7 @@ export function createWebhookHandler(
 	handler.on(
 		WebhookEventType.SubscriptionChanged,
 		async ({ event, response }) => {
-			const content = event.content;
-			if (content.subscription && content.customer) {
-				await onSubscriptionUpdated(
-					endpointCtx,
-					options,
-					content.subscription,
-					content.customer,
-				);
-			}
+			await dispatchWebhookEvent(event, endpointCtx, ctx, options);
 			response?.status(200).send("OK");
 		},
 	);
@@ -112,15 +201,7 @@ export function createWebhookHandler(
 	handler.on(
 		WebhookEventType.SubscriptionRenewed,
 		async ({ event, response }) => {
-			const content = event.content;
-			if (content.subscription && content.customer) {
-				await onSubscriptionUpdated(
-					endpointCtx,
-					options,
-					content.subscription,
-					content.customer,
-				);
-			}
+			await dispatchWebhookEvent(event, endpointCtx, ctx, options);
 			response?.status(200).send("OK");
 		},
 	);
@@ -128,15 +209,7 @@ export function createWebhookHandler(
 	handler.on(
 		WebhookEventType.SubscriptionStarted,
 		async ({ event, response }) => {
-			const content = event.content;
-			if (content.subscription && content.customer) {
-				await onSubscriptionComplete(
-					endpointCtx,
-					options,
-					content.subscription,
-					content.customer,
-				);
-			}
+			await dispatchWebhookEvent(event, endpointCtx, ctx, options);
 			response?.status(200).send("OK");
 		},
 	);
@@ -147,10 +220,7 @@ export function createWebhookHandler(
 	handler.on(
 		WebhookEventType.SubscriptionCancelled,
 		async ({ event, response }) => {
-			const content = event.content;
-			if (content.subscription) {
-				await onSubscriptionDeleted(endpointCtx, options, content.subscription);
-			}
+			await dispatchWebhookEvent(event, endpointCtx, ctx, options);
 			response?.status(200).send("OK");
 		},
 	);
@@ -158,15 +228,7 @@ export function createWebhookHandler(
 	handler.on(
 		WebhookEventType.SubscriptionScheduledCancellationRemoved,
 		async ({ event, response }) => {
-			const content = event.content;
-			if (content.subscription && content.customer) {
-				await onSubscriptionUpdated(
-					endpointCtx,
-					options,
-					content.subscription,
-					content.customer,
-				);
-			}
+			await dispatchWebhookEvent(event, endpointCtx, ctx, options);
 			response?.status(200).send("OK");
 		},
 	);
@@ -175,7 +237,7 @@ export function createWebhookHandler(
 	 * Handle customer deletion events
 	 */
 	handler.on(WebhookEventType.CustomerDeleted, async ({ event, response }) => {
-		await handleCustomerDeletion(event, ctx, options);
+		await dispatchWebhookEvent(event, endpointCtx, ctx, options);
 		response?.status(200).send("OK");
 	});
 
@@ -202,6 +264,77 @@ export function createWebhookHandler(
 
 		// Log other errors and send 200 to prevent Chargebee retries
 		ctx.logger.error("Error processing webhook event:", error);
+		webhookResponse?.status(200).send("OK");
+	});
+
+	return handler;
+}
+
+/**
+ * Creates a Chargebee webhook handler that validates and parses incoming events
+ * and forwards every event to the provided event bus instead of running the
+ * DB-sync hooks inline.
+ *
+ * Used by the webhook endpoint when `options.webhookEventBus` is configured, so
+ * events can be pushed onto an application queue and processed later via
+ * `createChargebeeWebhookProcessor`.
+ *
+ * @param options - Chargebee plugin options
+ * @param eventBus - Event bus that receives each validated, parsed event
+ * @param logger - Logger used for unhandled-event and error reporting
+ * @returns Configured webhook handler instance
+ */
+export function createWebhookPublishHandler(
+	options: ChargebeeOptions,
+	eventBus: ChargebeeWebhookEventBus,
+	logger: Logger,
+) {
+	const cb = options.chargebeeClient;
+
+	const handler = cb.webhooks.createHandler<Request, WebhookResponse>({
+		requestValidator: buildRequestValidator(options),
+	});
+
+	for (const eventType of HANDLED_EVENT_TYPES) {
+		handler.on(eventType, async ({ event, response }) => {
+			try {
+				await eventBus.publish(event);
+			} catch (error) {
+				// A queueing failure means the event was never persisted. Respond
+				// with a non-2xx so Chargebee retries instead of falling through to
+				// the generic 200 OK error path, which would drop the event.
+				logger.error("Failed to publish webhook event to event bus:", error);
+				response?.status(500).send("Failed to queue webhook event");
+				return;
+			}
+			response?.status(200).send("OK");
+		});
+	}
+
+	// Forward all other events too, so the application receives every webhook.
+	handler.on("unhandled_event", async ({ event, response }) => {
+		try {
+			await eventBus.publish(event);
+		} catch (error) {
+			logger.error("Failed to publish webhook event to event bus:", error);
+			response?.status(500).send("Failed to queue webhook event");
+			return;
+		}
+		response?.status(200).send("OK");
+	});
+
+	handler.on("error", (error: Error, { response }) => {
+		const webhookResponse = response as WebhookResponse | undefined;
+		if (error instanceof WebhookAuthenticationError) {
+			logger.warn(
+				`Webhook rejected: ${error.message}. Please verify webhookUsername and webhookPassword are correctly configured in your plugin options and that the webhook in Chargebee dashboard has matching Basic Auth credentials.`,
+			);
+			webhookResponse?.status(401).send("Unauthorized");
+			return;
+		}
+
+		// Log other errors and send 200 to prevent Chargebee retries
+		logger.error("Error processing webhook event:", error);
 		webhookResponse?.status(200).send("OK");
 	});
 
