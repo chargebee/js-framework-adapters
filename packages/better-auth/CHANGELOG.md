@@ -1,3 +1,20 @@
+### v1.2.0 (2026-07-10)
+* * *
+
+### Feature:
+- Added an optional `webhookEventBus` option to `ChargebeeOptions` for asynchronous webhook processing. When configured, the webhook endpoint validates and parses each incoming Chargebee event and forwards it to `webhookEventBus.publish(event)` (typically an application queue) instead of running the DB-sync hooks inline. When omitted, events continue to be processed synchronously within the request.
+- Added `createChargebeeWebhookProcessor` to consume queued events and run the plugin's DB-sync hooks. It accepts either an in-process Better Auth instance (`{ auth }`) or an explicit `{ context: { adapter, logger } }` for consumers running in a separate process.
+- Exported new types: `ChargebeeWebhookEventBus`, `WebhookEvent`, `ChargebeeWebhookProcessor`, and `ChargebeeWebhookProcessorSource`.
+
+### Improvement:
+- Extracted a shared `dispatchWebhookEvent` mapping so the synchronous handler and the async queue consumer route events to the same subscription/customer hooks, and factored out `buildRequestValidator` for the Basic Auth setup.
+- `WebhookEvent` now maps to Chargebee's dedicated `WebhookEvent` type (previously aliased to `Event`).
+
+### Bug:
+- The webhook publish handler now catches event-bus failures and responds with `500` so Chargebee retries the delivery, instead of returning `200 OK` and silently dropping events that were never queued.
+
+---
+
 ### v1.1.0 (2026-04-22)
 * * *
 
