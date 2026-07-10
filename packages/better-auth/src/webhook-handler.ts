@@ -297,14 +297,29 @@ export function createWebhookPublishHandler(
 
 	for (const eventType of HANDLED_EVENT_TYPES) {
 		handler.on(eventType, async ({ event, response }) => {
-			await eventBus.publish(event);
+			try {
+				await eventBus.publish(event);
+			} catch (error) {
+				// A queueing failure means the event was never persisted. Respond
+				// with a non-2xx so Chargebee retries instead of falling through to
+				// the generic 200 OK error path, which would drop the event.
+				logger.error("Failed to publish webhook event to event bus:", error);
+				response?.status(500).send("Failed to queue webhook event");
+				return;
+			}
 			response?.status(200).send("OK");
 		});
 	}
 
 	// Forward all other events too, so the application receives every webhook.
 	handler.on("unhandled_event", async ({ event, response }) => {
-		await eventBus.publish(event);
+		try {
+			await eventBus.publish(event);
+		} catch (error) {
+			logger.error("Failed to publish webhook event to event bus:", error);
+			response?.status(500).send("Failed to queue webhook event");
+			return;
+		}
 		response?.status(200).send("OK");
 	});
 
