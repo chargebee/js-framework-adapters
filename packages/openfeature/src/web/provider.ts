@@ -53,6 +53,7 @@ export class ChargebeeEntitlementsWebProvider implements Provider {
 	private snapshot?: ChargebeeEntitlementsSnapshot;
 	private staleEventEmitted = false;
 	private closed = false;
+	private refreshInProgress = false;
 
 	constructor(options: ChargebeeEntitlementsWebProviderOptions) {
 		if (!options?.relayUrl) throw new Error("relayUrl is required");
@@ -77,6 +78,7 @@ export class ChargebeeEntitlementsWebProvider implements Provider {
 		// A new session may represent a different billing subject.
 		this.snapshot = undefined;
 		this.staleEventEmitted = false;
+		this.refreshInProgress = false;
 		await this.refreshSnapshot();
 	}
 
@@ -84,6 +86,7 @@ export class ChargebeeEntitlementsWebProvider implements Provider {
 		this.closed = true;
 		this.snapshot = undefined;
 		this.staleEventEmitted = false;
+		this.refreshInProgress = false;
 	}
 
 	refreshSnapshot(): Promise<void> {
@@ -166,6 +169,18 @@ export class ChargebeeEntitlementsWebProvider implements Provider {
 			});
 			this.staleEventEmitted = true;
 		}
+
+		if (!this.refreshInProgress) {
+			this.refreshInProgress = true;
+			this.refreshSnapshot()
+				.catch(() => {
+					// Errors are already handled in loadSnapshot
+				})
+				.finally(() => {
+					this.refreshInProgress = false;
+				});
+		}
+
 		return { value: defaultValue, reason: "STALE" };
 	}
 

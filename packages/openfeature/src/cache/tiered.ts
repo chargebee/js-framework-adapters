@@ -41,11 +41,15 @@ export class TieredEntitlementsCache {
 		try {
 			const snapshot = await this.redis.get(key);
 			if (!snapshot) return undefined;
-			await this.memory.set(
-				key,
-				snapshot,
-				Math.min(this.memoryTtlMs, Date.parse(snapshot.expiresAt) - Date.now()),
-			);
+			try {
+				await this.memory.set(
+					key,
+					snapshot,
+					Math.min(this.memoryTtlMs, Date.parse(snapshot.expiresAt) - Date.now()),
+				);
+			} catch (memoryError) {
+				this.onError?.(memoryError, "memory");
+			}
 			return { snapshot, source: "redis" };
 		} catch (error) {
 			this.onError?.(error, "redis");
