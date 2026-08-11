@@ -1,11 +1,15 @@
 packages:
   - packages/*
-onlyBuiltDependencies:
-  - '@biomejs/biome'
-  - core-js
-  - esbuild
 overrides:
   chargebee-init: link:packages/cli
   '@chargebee/express': link:packages/express
   '@chargebee/nextjs': link:packages/nextjs
   '@chargebee/openfeature': link:packages/openfeature
+allowBuilds:
+  '@biomejs/biome': true
+  '@prisma/engines': false
+  better-sqlite3: false
+  core-js: true
+  esbuild: true
+  prisma: false
+  sharp: false
