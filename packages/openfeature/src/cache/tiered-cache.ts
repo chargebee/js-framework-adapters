@@ -1,6 +1,6 @@
-import type { ChargebeeEntitlementsSnapshot } from "../shared";
-import { MemoryEntitlementsCache } from "./memory";
-import type { CacheLookup, EntitlementsCache } from "./types";
+import type { ChargebeeEntitlementsSnapshot } from "../shared.js";
+import { MemoryEntitlementsCache } from "./memory.js";
+import type { CacheLookup, EntitlementsCache } from "./types.js";
 
 export interface TieredEntitlementsCacheOptions {
 	memory?: EntitlementsCache;
@@ -45,7 +45,10 @@ export class TieredEntitlementsCache {
 				await this.memory.set(
 					key,
 					snapshot,
-					Math.min(this.memoryTtlMs, Date.parse(snapshot.expiresAt) - Date.now()),
+					Math.min(
+						this.memoryTtlMs,
+						Date.parse(snapshot.expiresAt) - Date.now(),
+					),
 				);
 			} catch (memoryError) {
 				this.onError?.(memoryError, "memory");

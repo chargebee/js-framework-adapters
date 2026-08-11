@@ -7,7 +7,7 @@ export { createRedisEntitlementsCache } from "./cache/redis";
 export {
 	TieredEntitlementsCache,
 	type TieredEntitlementsCacheOptions,
-} from "./cache/tiered";
+} from "./cache/tiered-cache";
 export type {
 	CacheLookup,
 	EntitlementsCache,
