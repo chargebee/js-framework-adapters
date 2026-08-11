@@ -170,7 +170,7 @@ export class ChargebeeEntitlementsWebProvider implements Provider {
 			this.staleEventEmitted = true;
 		}
 
-		if (!this.refreshInProgress) {
+		if (!this.refreshInProgress && !this.closed) {
 			this.refreshInProgress = true;
 			this.refreshSnapshot()
 				.catch(() => {
