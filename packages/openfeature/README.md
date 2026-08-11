@@ -2,7 +2,7 @@
 
 `@chargebee/openfeature` exposes Chargebee Entitlements through the OpenFeature
 server and web SDKs. It supports customer-level consolidated entitlements,
-subscription-level entitlements, layered memory/Redis caching, and an
+subscription-level entitlements, tiered memory/Redis caching, and an
 authenticated browser relay for Next.js 16.
 
 ## Install
@@ -95,7 +95,7 @@ shared Redis L2 cache for multi-instance or serverless deployments:
 ```ts
 import {
   createRedisEntitlementsCache,
-  LayeredEntitlementsCache,
+  TieredEntitlementsCache,
 } from "@chargebee/openfeature/cache";
 
 const redisCache = createRedisEntitlementsCache({
@@ -108,7 +108,7 @@ const redisCache = createRedisEntitlementsCache({
   },
 });
 
-const cache = new LayeredEntitlementsCache({
+const cache = new TieredEntitlementsCache({
   redis: redisCache,
   memoryTtlMs: 30_000,
   redisTtlMs: 5 * 60_000,

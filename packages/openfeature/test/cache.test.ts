@@ -1,7 +1,7 @@
 import {
 	createRedisEntitlementsCache,
-	LayeredEntitlementsCache,
 	MemoryEntitlementsCache,
+	TieredEntitlementsCache,
 } from "../src/cache";
 import { createEntitlementsSnapshot } from "../src/shared";
 
@@ -58,7 +58,7 @@ describe("Redis entitlement cache", () => {
 	});
 });
 
-describe("LayeredEntitlementsCache", () => {
+describe("TieredEntitlementsCache", () => {
 	it("hydrates memory from Redis and falls back when Redis fails", async () => {
 		const snapshot = makeSnapshot();
 		const memory = new MemoryEntitlementsCache();
@@ -68,7 +68,7 @@ describe("LayeredEntitlementsCache", () => {
 			delete: vi.fn(async () => undefined),
 		};
 		const onError = vi.fn();
-		const cache = new LayeredEntitlementsCache({ memory, redis, onError });
+		const cache = new TieredEntitlementsCache({ memory, redis, onError });
 
 		expect(await cache.get("target")).toMatchObject({ source: "redis", snapshot });
 		expect(await cache.get("target")).toMatchObject({ source: "memory", snapshot });
@@ -87,7 +87,7 @@ describe("LayeredEntitlementsCache", () => {
 			set: vi.fn(async () => undefined),
 			delete: vi.fn(async () => undefined),
 		};
-		const cache = new LayeredEntitlementsCache({ memory, redis });
+		const cache = new TieredEntitlementsCache({ memory, redis });
 
 		await cache.set("target", snapshot);
 		await cache.delete("target");
