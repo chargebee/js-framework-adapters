@@ -1,9 +1,9 @@
 import type {
 	ChargebeeEntitlement,
 	ChargebeeEntitlementsSnapshot,
-	EntitlementCacheSource,
 	EntitlementErrorCode,
 	EntitlementResolution,
+	SnapshotSource,
 } from "./types";
 
 type EnabledEntitlement = {
@@ -13,7 +13,7 @@ type EnabledEntitlement = {
 
 function metadataFor(
 	entitlement: ChargebeeEntitlement,
-	source: EntitlementCacheSource,
+	source: SnapshotSource,
 ): Record<string, boolean | string | number> {
 	return {
 		chargebeeFeatureId: entitlement.featureId,
@@ -37,7 +37,7 @@ function metadataFor(
 	};
 }
 
-function error<T>(
+export function errorResolution<T>(
 	value: T,
 	errorCode: EntitlementErrorCode,
 	errorMessage: string,
@@ -45,15 +45,31 @@ function error<T>(
 	return { value, reason: "ERROR", errorCode, errorMessage };
 }
 
+/**
+ * Adapts an SDK-agnostic {@link EntitlementResolution} into the
+ * `ResolutionDetails` shape both OpenFeature SDKs expect. The server and web
+ * SDKs declare structurally identical but nominally distinct `ErrorCode`
+ * enums, so the target error code type is a generic parameter instead of a
+ * hard dependency on either SDK package.
+ */
+export function toResolutionDetails<T, TErrorCode>(
+	resolution: EntitlementResolution<T>,
+): Omit<EntitlementResolution<T>, "errorCode"> & { errorCode?: TErrorCode } {
+	return {
+		...resolution,
+		errorCode: resolution.errorCode as unknown as TErrorCode | undefined,
+	};
+}
+
 function getEnabled<T>(
 	snapshot: ChargebeeEntitlementsSnapshot,
 	flagKey: string,
 	defaultValue: T,
-	source: EntitlementCacheSource,
+	source: SnapshotSource,
 ): EnabledEntitlement | EntitlementResolution<T> {
 	const entitlement = snapshot.entitlements[flagKey];
 	if (!entitlement) {
-		return error(
+		return errorResolution(
 			defaultValue,
 			"FLAG_NOT_FOUND",
 			`Chargebee feature ${flagKey} was not found`,
@@ -76,14 +92,14 @@ function getEnabled<T>(
 	return { entitlement, metadata };
 }
 
-const reasonFor = (source: EntitlementCacheSource) =>
+const reasonFor = (source: SnapshotSource) =>
 	source === "api" ? "TARGETING_MATCH" : "CACHED";
 
 export function resolveBooleanEntitlement(
 	snapshot: ChargebeeEntitlementsSnapshot,
 	flagKey: string,
 	defaultValue: boolean,
-	source: EntitlementCacheSource,
+	source: SnapshotSource,
 ): EntitlementResolution<boolean> {
 	const found = getEnabled(snapshot, flagKey, defaultValue, source);
 	if (!("entitlement" in found)) return found;
@@ -102,7 +118,7 @@ export function resolveBooleanEntitlement(
 		};
 	}
 	if (!["true", "false", "available"].includes(normalized ?? "")) {
-		return error(
+		return errorResolution(
 			defaultValue,
 			"TYPE_MISMATCH",
 			`Chargebee feature ${flagKey} is not a boolean entitlement`,
@@ -122,14 +138,14 @@ export function resolveStringEntitlement(
 	snapshot: ChargebeeEntitlementsSnapshot,
 	flagKey: string,
 	defaultValue: string,
-	source: EntitlementCacheSource,
+	source: SnapshotSource,
 ): EntitlementResolution<string> {
 	const found = getEnabled(snapshot, flagKey, defaultValue, source);
 	if (!("entitlement" in found)) return found;
 
 	const value = found.entitlement.value;
 	if (value === undefined) {
-		return error(
+		return errorResolution(
 			defaultValue,
 			"PARSE_ERROR",
 			`Chargebee feature ${flagKey} has no value`,
@@ -148,7 +164,7 @@ export function resolveNumberEntitlement(
 	snapshot: ChargebeeEntitlementsSnapshot,
 	flagKey: string,
 	defaultValue: number,
-	source: EntitlementCacheSource,
+	source: SnapshotSource,
 ): EntitlementResolution<number> {
 	const found = getEnabled(snapshot, flagKey, defaultValue, source);
 	if (!("entitlement" in found)) return found;
@@ -165,7 +181,7 @@ export function resolveNumberEntitlement(
 
 	const value = rawValue ? Number(rawValue) : Number.NaN;
 	if (!Number.isFinite(value)) {
-		return error(
+		return errorResolution(
 			defaultValue,
 			"TYPE_MISMATCH",
 			`Chargebee feature ${flagKey} is not a numeric entitlement`,
@@ -184,7 +200,7 @@ export function resolveObjectEntitlement<T>(
 	snapshot: ChargebeeEntitlementsSnapshot,
 	flagKey: string,
 	defaultValue: T,
-	source: EntitlementCacheSource,
+	source: SnapshotSource,
 ): EntitlementResolution<T> {
 	const found = getEnabled(snapshot, flagKey, defaultValue, source);
 	if (!("entitlement" in found)) return found;

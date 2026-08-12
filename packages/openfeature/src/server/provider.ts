@@ -6,50 +6,96 @@ import type {
 	Provider,
 	ResolutionDetails,
 } from "@openfeature/server-sdk";
-import {
-	createEntitlementsCacheKey,
-	TieredEntitlementsCache,
-	type TieredEntitlementsCacheOptions,
-} from "../cache";
+import { createEntitlementsCacheKey, type EntitlementsStorage } from "../cache";
 import {
 	type ChargebeeEntitlementsSnapshot,
 	type ChargebeeEvaluationMode,
 	type ChargebeeTarget,
 	createEntitlementsSnapshot,
 	type EntitlementResolution,
+	errorResolution,
 	getTargetFromContext,
+	isSnapshotExpired,
 	resolveBooleanEntitlement,
 	resolveNumberEntitlement,
 	resolveObjectEntitlement,
 	resolveStringEntitlement,
+	type SnapshotSource,
+	toResolutionDetails,
 } from "../shared";
 import {
 	type ChargebeeEntitlementsClient,
 	ChargebeeEntitlementsLoader,
 } from "./loader";
 
+/**
+ * What happens when neither the cache nor the store holds a snapshot.
+ * `blocking` waits for Chargebee; `background` starts the refresh and reports
+ * the snapshot as pending so the caller can fall back to its own defaults.
+ */
+export type RefreshOnMiss = "blocking" | "background";
+
+export type SnapshotOperation =
+	| "cache-read"
+	| "cache-write"
+	| "cache-delete"
+	| "store-read"
+	| "store-write"
+	| "store-delete"
+	| "refresh";
+
+export interface SnapshotErrorInfo {
+	operation: SnapshotOperation;
+	target: ChargebeeTarget;
+}
+
+export interface SnapshotRefreshedEvent {
+	target: ChargebeeTarget;
+	snapshot: ChargebeeEntitlementsSnapshot;
+	/** `explicit` for `refreshSnapshot` calls, `request` for request refreshes. */
+	trigger: "explicit" | "request";
+}
+
 export interface ChargebeeEntitlementsProviderOptions {
 	chargebeeClient: ChargebeeEntitlementsClient;
 	defaultMode?: ChargebeeEvaluationMode;
 	consolidateCustomerEntitlements?: boolean;
 	resolveTarget?: (context: EvaluationContext) => ChargebeeTarget;
-	cache?: TieredEntitlementsCache | TieredEntitlementsCacheOptions;
+	/** Fast shared cache (Redis or similar) read before the store. */
+	cache?: EntitlementsStorage;
+	/** Cache expiry. Defaults to whatever the cache implementation applies. */
+	cacheTtlMs?: number;
+	/** Durable snapshot store treated as the source of truth. */
+	store?: EntitlementsStorage;
 	cacheNamespace?: string;
+	snapshotTtlMs?: number;
+	refreshOnMiss?: RefreshOnMiss;
+	/** Minimum gap between background refresh attempts after a failure. */
+	refreshBackoffMs?: number;
+	onSnapshotRefreshed?: (event: SnapshotRefreshedEvent) => void;
+	onError?: (error: unknown, info: SnapshotErrorInfo) => void;
 	pageSize?: number;
 	maxPages?: number;
 }
 
 export interface EntitlementsSnapshotResult {
 	snapshot: ChargebeeEntitlementsSnapshot;
-	source: "api" | "memory" | "redis";
-}
-
-interface InFlightSnapshotRequest {
-	promise: Promise<EntitlementsSnapshotResult>;
-	state: { invalidated: boolean };
+	source: Exclude<SnapshotSource, "relay">;
 }
 
 class InvalidEntitlementContextError extends Error {}
+
+/**
+ * Thrown when no snapshot is available locally and the provider was configured
+ * to refresh in the background instead of blocking on Chargebee.
+ */
+export class SnapshotPendingError extends Error {
+	readonly name = "SnapshotPendingError";
+
+	constructor(readonly target: ChargebeeTarget) {
+		super("Chargebee entitlement snapshot is still loading");
+	}
+}
 
 export class ChargebeeEntitlementsProvider implements Provider {
 	readonly metadata = { name: "Chargebee Entitlements" } as const;
@@ -60,10 +106,23 @@ export class ChargebeeEntitlementsProvider implements Provider {
 	private readonly resolveTargetOption?: (
 		context: EvaluationContext,
 	) => ChargebeeTarget;
-	private readonly cache: TieredEntitlementsCache;
+	private readonly cache?: EntitlementsStorage;
+	private readonly cacheTtlMs?: number;
+	private readonly store?: EntitlementsStorage;
 	private readonly cacheNamespace?: string;
+	private readonly snapshotTtlMs: number;
+	private readonly refreshOnMiss: RefreshOnMiss;
+	private readonly refreshBackoffMs: number;
+	private readonly onSnapshotRefreshed?: (
+		event: SnapshotRefreshedEvent,
+	) => void;
+	private readonly onError?: (error: unknown, info: SnapshotErrorInfo) => void;
 	private readonly loader: ChargebeeEntitlementsLoader;
-	private readonly inFlight = new Map<string, InFlightSnapshotRequest>();
+	private readonly inFlight = new Map<
+		string,
+		{ promise: Promise<ChargebeeEntitlementsSnapshot>; cancelled: boolean }
+	>();
+	private readonly failedAt = new Map<string, number>();
 
 	constructor(options: ChargebeeEntitlementsProviderOptions) {
 		if (!options?.chargebeeClient)
@@ -73,11 +132,23 @@ export class ChargebeeEntitlementsProvider implements Provider {
 		this.consolidateCustomerEntitlements =
 			options.consolidateCustomerEntitlements ?? true;
 		this.resolveTargetOption = options.resolveTarget;
-		this.cache =
-			options.cache instanceof TieredEntitlementsCache
-				? options.cache
-				: new TieredEntitlementsCache(options.cache);
+		this.cache = options.cache;
+		this.cacheTtlMs = options.cacheTtlMs;
+		this.store = options.store;
 		this.cacheNamespace = options.cacheNamespace;
+		this.snapshotTtlMs = options.snapshotTtlMs ?? 300_000;
+		this.refreshOnMiss = options.refreshOnMiss ?? "blocking";
+		this.refreshBackoffMs = options.refreshBackoffMs ?? 10_000;
+		this.onSnapshotRefreshed = options.onSnapshotRefreshed;
+		this.onError = options.onError;
+		for (const [name, value] of [
+			["cacheTtlMs", this.cacheTtlMs],
+			["snapshotTtlMs", this.snapshotTtlMs],
+		] as const) {
+			if (value !== undefined && (!Number.isFinite(value) || value <= 0)) {
+				throw new Error(`${name} must be a positive number`);
+			}
+		}
 		this.loader = new ChargebeeEntitlementsLoader({
 			chargebeeClient: options.chargebeeClient,
 			consolidateCustomerEntitlements: this.consolidateCustomerEntitlements,
@@ -87,11 +158,9 @@ export class ChargebeeEntitlementsProvider implements Provider {
 	}
 
 	async onClose(): Promise<void> {
-		for (const request of this.inFlight.values()) {
-			request.state.invalidated = true;
-		}
+		for (const request of this.inFlight.values()) request.cancelled = true;
 		this.inFlight.clear();
-		await this.cache.clearMemory();
+		this.failedAt.clear();
 	}
 
 	resolveBooleanEvaluation(
@@ -158,28 +227,104 @@ export class ChargebeeEntitlementsProvider implements Provider {
 		);
 	}
 
+	/**
+	 * Resolves a snapshot from the cache, then the store, then Chargebee.
+	 * Throws {@link SnapshotPendingError} when nothing is stored locally and
+	 * `refreshOnMiss` is `background`.
+	 */
 	async getSnapshot(
 		context: EvaluationContext,
 		logger?: Logger,
 	): Promise<EntitlementsSnapshotResult> {
 		const target = this.resolveTarget(context);
 		const key = this.cacheKey(target);
-		const cached = await this.cache.get(key);
-		if (cached) return cached;
 
-		const current = this.inFlight.get(key);
-		if (current) return current.promise;
+		const cached = await this.read(this.cache, key, target, "cache-read");
+		if (cached) {
+			this.refreshIfExpired(cached, target, key, logger);
+			return { snapshot: cached, source: "cache" };
+		}
 
-		const state = { invalidated: false };
-		const promise = this.loadSnapshot(target, key, state, logger).finally(
-			() => {
-				if (this.inFlight.get(key)?.promise === promise) {
-					this.inFlight.delete(key);
-				}
-			},
-		);
-		this.inFlight.set(key, { promise, state });
-		return promise;
+		const stored = await this.read(this.store, key, target, "store-read");
+		if (stored) {
+			await this.write(this.cache, key, stored, target, "cache-write");
+			this.refreshIfExpired(stored, target, key, logger);
+			return { snapshot: stored, source: "store" };
+		}
+
+		if (this.refreshOnMiss === "background") {
+			this.scheduleRefresh(target, key, logger);
+			throw new SnapshotPendingError(target);
+		}
+
+		return {
+			snapshot: await this.fetchAndPersistSnapshot(
+				target,
+				key,
+				"request",
+				logger,
+			),
+			source: "api",
+		};
+	}
+
+	/**
+	 * Fetches the complete snapshot from Chargebee and writes it to the store
+	 * and cache. Use this from webhook workers and reconciliation jobs.
+	 *
+	 * The cache entry is dropped before the fetch: an explicit refresh means the
+	 * truth has changed, so reads fall through to the store rather than serve a
+	 * value the caller already knows is stale.
+	 */
+	async refreshSnapshot(
+		target: ChargebeeTarget,
+		logger?: Logger,
+	): Promise<EntitlementsSnapshotResult> {
+		const key = this.cacheKey(target);
+		// An explicit refresh represents a known upstream change (typically a
+		// webhook). It must not join a request refresh that may have started
+		// before that change. Cancel both before and after the async eviction so
+		// no refresh started during that gap can be reused either.
+		this.cancelInFlight(key);
+		await this.evictCache(key, target);
+		this.cancelInFlight(key);
+		return {
+			snapshot: await this.fetchAndPersistSnapshot(
+				target,
+				key,
+				"explicit",
+				logger,
+			),
+			source: "api",
+		};
+	}
+
+	/** Writes a snapshot assembled elsewhere, e.g. from a webhook payload. */
+	async writeSnapshot(
+		target: ChargebeeTarget,
+		snapshot: ChargebeeEntitlementsSnapshot,
+	): Promise<void> {
+		if (snapshot.targetMode !== target.mode) {
+			throw new Error(
+				`Snapshot target mode ${snapshot.targetMode} does not match ${target.mode}`,
+			);
+		}
+		const key = this.cacheKey(target);
+		this.cancelInFlight(key);
+		await this.persist(key, snapshot, target);
+	}
+
+	/** Removes the snapshot from both the cache and the store. */
+	async deleteSnapshot(target: ChargebeeTarget): Promise<void> {
+		const key = this.cacheKey(target);
+		this.cancelInFlight(key);
+		await this.evictCache(key, target);
+		await this.store?.delete(key);
+	}
+
+	/** Drops the cached copy, leaving the store as the next read's source. */
+	async evictCachedSnapshot(target: ChargebeeTarget): Promise<void> {
+		await this.evictCache(this.cacheKey(target), target);
 	}
 
 	async getRelaySnapshot(
@@ -196,18 +341,6 @@ export class ChargebeeEntitlementsProvider implements Provider {
 		};
 	}
 
-	async invalidate(target: ChargebeeTarget): Promise<void> {
-		const key = this.cacheKey(target);
-		const current = this.inFlight.get(key);
-		if (current) current.state.invalidated = true;
-		this.inFlight.delete(key);
-		await this.cache.delete(key);
-	}
-
-	clearMemoryCache(): Promise<void> {
-		return this.cache.clearMemory();
-	}
-
 	private async evaluate<T>(
 		defaultValue: T,
 		context: EvaluationContext,
@@ -215,12 +348,158 @@ export class ChargebeeEntitlementsProvider implements Provider {
 		resolve: (result: EntitlementsSnapshotResult) => EntitlementResolution<T>,
 	): Promise<ResolutionDetails<T>> {
 		try {
-			return this.toResolution(
+			return toResolutionDetails<T, ErrorCode>(
 				resolve(await this.getSnapshot(context, logger)),
 			);
 		} catch (error) {
-			return this.errorResolution(defaultValue, error);
+			if (error instanceof SnapshotPendingError) {
+				return {
+					value: defaultValue,
+					reason: "STALE",
+					flagMetadata: { snapshotPending: true },
+				};
+			}
+			return toResolutionDetails<T, ErrorCode>(
+				errorResolution(
+					defaultValue,
+					error instanceof InvalidEntitlementContextError
+						? "INVALID_CONTEXT"
+						: "GENERAL",
+					error instanceof Error
+						? error.message
+						: "Unable to evaluate Chargebee entitlement",
+				),
+			);
 		}
+	}
+
+	private async read(
+		storage: EntitlementsStorage | undefined,
+		key: string,
+		target: ChargebeeTarget,
+		operation: Extract<SnapshotOperation, "cache-read" | "store-read">,
+	): Promise<ChargebeeEntitlementsSnapshot | undefined> {
+		if (!storage) return undefined;
+		try {
+			return await storage.get(key);
+		} catch (error) {
+			// A storage outage degrades to the next link in the chain.
+			this.onError?.(error, { operation, target });
+			return undefined;
+		}
+	}
+
+	private async write(
+		storage: EntitlementsStorage | undefined,
+		key: string,
+		snapshot: ChargebeeEntitlementsSnapshot,
+		target: ChargebeeTarget,
+		operation: Extract<SnapshotOperation, "cache-write" | "store-write">,
+	): Promise<void> {
+		if (!storage) return;
+		try {
+			await storage.set(
+				key,
+				snapshot,
+				operation === "cache-write" ? this.cacheTtlMs : this.snapshotTtlMs,
+			);
+		} catch (error) {
+			this.onError?.(error, { operation, target });
+		}
+	}
+
+	private async evictCache(
+		key: string,
+		target: ChargebeeTarget,
+	): Promise<void> {
+		if (!this.cache) return;
+		try {
+			await this.cache.delete(key);
+		} catch (error) {
+			this.onError?.(error, { operation: "cache-delete", target });
+		}
+	}
+
+	/**
+	 * The store is authoritative, so an expired snapshot is still served while
+	 * a fresh copy loads in the background.
+	 */
+	private refreshIfExpired(
+		snapshot: ChargebeeEntitlementsSnapshot,
+		target: ChargebeeTarget,
+		key: string,
+		logger?: Logger,
+	): void {
+		if (isSnapshotExpired(snapshot)) this.scheduleRefresh(target, key, logger);
+	}
+
+	private scheduleRefresh(
+		target: ChargebeeTarget,
+		key: string,
+		logger?: Logger,
+	): void {
+		const failedAt = this.failedAt.get(key);
+		if (failedAt !== undefined && Date.now() - failedAt < this.refreshBackoffMs)
+			return;
+
+		void this.fetchAndPersistSnapshot(target, key, "request", logger).catch(
+			() => {
+				// Reported through onError inside fetchAndPersistSnapshot.
+			},
+		);
+	}
+
+	private fetchAndPersistSnapshot(
+		target: ChargebeeTarget,
+		key: string,
+		trigger: SnapshotRefreshedEvent["trigger"],
+		logger?: Logger,
+	): Promise<ChargebeeEntitlementsSnapshot> {
+		const current = this.inFlight.get(key);
+		if (current) return current.promise;
+
+		const request = {
+			cancelled: false,
+			promise: Promise.resolve().then(async () => {
+				try {
+					const snapshot = createEntitlementsSnapshot(
+						target.mode,
+						await this.loader.load(target, logger),
+						this.snapshotTtlMs,
+					);
+					if (!request.cancelled) {
+						await this.persist(key, snapshot, target);
+						this.onSnapshotRefreshed?.({ target, snapshot, trigger });
+					}
+					this.failedAt.delete(key);
+					return snapshot;
+				} catch (error) {
+					this.failedAt.set(key, Date.now());
+					this.onError?.(error, { operation: "refresh", target });
+					throw error;
+				} finally {
+					if (this.inFlight.get(key) === request) this.inFlight.delete(key);
+				}
+			}),
+		};
+		this.inFlight.set(key, request);
+		return request.promise;
+	}
+
+	/** The store is the source of truth, so its write failures propagate. */
+	private async persist(
+		key: string,
+		snapshot: ChargebeeEntitlementsSnapshot,
+		target: ChargebeeTarget,
+	): Promise<void> {
+		if (this.store) await this.store.set(key, snapshot, this.snapshotTtlMs);
+		await this.write(this.cache, key, snapshot, target, "cache-write");
+	}
+
+	private cancelInFlight(key: string): void {
+		const current = this.inFlight.get(key);
+		if (current) current.cancelled = true;
+		this.inFlight.delete(key);
 	}
 
 	private resolveTarget(context: EvaluationContext): ChargebeeTarget {
@@ -240,47 +519,6 @@ export class ChargebeeEntitlementsProvider implements Provider {
 			namespace: this.cacheNamespace,
 			consolidateCustomerEntitlements: this.consolidateCustomerEntitlements,
 		});
-	}
-
-	private async loadSnapshot(
-		target: ChargebeeTarget,
-		key: string,
-		state: { invalidated: boolean },
-		logger?: Logger,
-	): Promise<EntitlementsSnapshotResult> {
-		const snapshot = createEntitlementsSnapshot(
-			target.mode,
-			await this.loader.load(target, logger),
-			this.cache.snapshotTtlMs,
-		);
-		if (!state.invalidated) await this.cache.set(key, snapshot);
-		return { snapshot, source: "api" };
-	}
-
-	private errorResolution<T>(
-		defaultValue: T,
-		error: unknown,
-	): ResolutionDetails<T> {
-		return {
-			value: defaultValue,
-			reason: "ERROR",
-			errorCode: (error instanceof InvalidEntitlementContextError
-				? "INVALID_CONTEXT"
-				: "GENERAL") as ErrorCode,
-			errorMessage:
-				error instanceof Error
-					? error.message
-					: "Unable to evaluate Chargebee entitlement",
-		};
-	}
-
-	private toResolution<T>(
-		resolution: EntitlementResolution<T>,
-	): ResolutionDetails<T> {
-		return {
-			...resolution,
-			errorCode: resolution.errorCode as ErrorCode | undefined,
-		};
 	}
 }
 

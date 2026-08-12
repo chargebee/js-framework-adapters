@@ -3,12 +3,16 @@ import {
 	OpenFeature,
 } from "@openfeature/server-sdk";
 import type { CustomerEntitlement } from "chargebee";
-import { MemoryEntitlementsCache } from "../src/cache";
+import {
+	createMemoryEntitlementsCache,
+	type EntitlementsStorage,
+} from "../src/cache";
 import {
 	type ChargebeeEntitlementsClient,
 	ChargebeeEntitlementsProvider,
 	createEntitlementsRelayHandler,
 } from "../src/server";
+import type { ChargebeeEntitlementsSnapshot } from "../src/shared";
 
 function makeClient(
 	customerPages: Array<{
@@ -35,6 +39,33 @@ function makeClient(
 const context: EvaluationContext = {
 	targetingKey: "app-user-1",
 	chargebeeCustomerId: "customer-1",
+};
+
+/** A durable store keeps snapshots past `expiresAt`; the provider refreshes them. */
+function makeDurableStore(): EntitlementsStorage {
+	const snapshots = new Map<string, ChargebeeEntitlementsSnapshot>();
+	return {
+		get: async (key) => snapshots.get(key),
+		set: async (key, snapshot) => {
+			snapshots.set(key, snapshot);
+		},
+		delete: async (key) => {
+			snapshots.delete(key);
+		},
+	};
+}
+
+const ssoPage = {
+	list: [
+		{
+			customer_entitlement: {
+				customer_id: "customer-1",
+				feature_id: "sso",
+				value: "true",
+				is_enabled: true,
+			},
+		},
+	],
 };
 
 afterEach(async () => {
@@ -72,7 +103,8 @@ describe("ChargebeeEntitlementsProvider", () => {
 		]);
 		const provider = new ChargebeeEntitlementsProvider({
 			chargebeeClient: client,
-			cache: { memory: new MemoryEntitlementsCache(), memoryTtlMs: 60_000 },
+			cache: createMemoryEntitlementsCache(),
+			cacheTtlMs: 60_000,
 		});
 
 		const first = await provider.resolveBooleanEvaluation(
@@ -163,7 +195,7 @@ describe("ChargebeeEntitlementsProvider", () => {
 
 		const first = provider.getSnapshot(context);
 		await started;
-		await provider.invalidate({ mode: "customer", customerId: "customer-1" });
+		await provider.deleteSnapshot({ mode: "customer", customerId: "customer-1" });
 		release?.();
 		await first;
 		await provider.getSnapshot(context);
@@ -240,6 +272,236 @@ describe("ChargebeeEntitlementsProvider", () => {
 			"subscription-1",
 			expect.objectContaining({ limit: 100 }),
 		);
+	});
+
+	it("reads the cache first, then the store, and hydrates the cache", async () => {
+		const { client, customerRequest } = makeClient([ssoPage]);
+		const cache = createMemoryEntitlementsCache();
+		const store = createMemoryEntitlementsCache();
+		await new ChargebeeEntitlementsProvider({
+			chargebeeClient: client,
+			store,
+		}).refreshSnapshot({ mode: "customer", customerId: "customer-1" });
+
+		const reader = new ChargebeeEntitlementsProvider({
+			chargebeeClient: client,
+			cache,
+			store,
+			refreshOnMiss: "background",
+		});
+
+		await expect(reader.getSnapshot(context)).resolves.toMatchObject({
+			source: "store",
+		});
+		await expect(reader.getSnapshot(context)).resolves.toMatchObject({
+			source: "cache",
+		});
+		expect(customerRequest).toHaveBeenCalledTimes(1);
+	});
+
+	it("falls back to the store when the cache is unavailable", async () => {
+		const { client } = makeClient([ssoPage]);
+		const store = createMemoryEntitlementsCache();
+		const onError = vi.fn();
+		const provider = new ChargebeeEntitlementsProvider({
+			chargebeeClient: client,
+			cache: {
+				get: vi.fn(async () => {
+					throw new Error("redis unavailable");
+				}),
+				set: vi.fn(async () => undefined),
+				delete: vi.fn(async () => undefined),
+			},
+			store,
+			onError,
+		});
+		await provider.refreshSnapshot({
+			mode: "customer",
+			customerId: "customer-1",
+		});
+
+		await expect(
+			provider.resolveBooleanEvaluation("sso", false, context, console),
+		).resolves.toMatchObject({
+			value: true,
+			reason: "CACHED",
+			flagMetadata: { cacheSource: "store" },
+		});
+		expect(onError).toHaveBeenCalledWith(expect.any(Error), {
+			operation: "cache-read",
+			target: { mode: "customer", customerId: "customer-1" },
+		});
+	});
+
+	it("evicts the cached snapshot before priming a new one", async () => {
+		const { client } = makeClient([ssoPage, ssoPage]);
+		const store = makeDurableStore();
+		const cache = createMemoryEntitlementsCache();
+		const evict = vi.spyOn(cache, "delete");
+		const provider = new ChargebeeEntitlementsProvider({
+			chargebeeClient: client,
+			cache,
+			store,
+		});
+		const target = { mode: "customer", customerId: "customer-1" } as const;
+
+		await provider.refreshSnapshot(target);
+		await provider.getSnapshot(context);
+		await provider.refreshSnapshot(target);
+
+		expect(evict).toHaveBeenCalledTimes(2);
+		expect(evict).toHaveBeenCalledWith(
+			"chargebee:openfeature:v1:customer:customer-1:consolidated",
+		);
+	});
+
+	it("does not join a request refresh that was already in flight", async () => {
+		let releaseFirst: (() => void) | undefined;
+		let finishFirst: (() => void) | undefined;
+		const firstPending = new Promise<void>((resolve) => {
+			releaseFirst = resolve;
+		});
+		const firstFinished = new Promise<void>((resolve) => {
+			finishFirst = resolve;
+		});
+		let requestCount = 0;
+		const customerRequest = vi.fn(async () => {
+			const requestNumber = ++requestCount;
+			if (requestNumber === 1) {
+				await firstPending;
+				finishFirst?.();
+				return ssoPage;
+			}
+			return {
+				list: [
+					{
+						customer_entitlement: {
+							customer_id: "customer-1",
+							feature_id: "sso",
+							value: "false",
+							is_enabled: true,
+						},
+					},
+				],
+			};
+		});
+		const onSnapshotRefreshed = vi.fn();
+		const provider = new ChargebeeEntitlementsProvider({
+			chargebeeClient: {
+				customerEntitlement: { entitlementsForCustomer: customerRequest },
+				subscriptionEntitlement: {
+					subscriptionEntitlementsForSubscription: vi.fn(),
+				},
+			} as unknown as ChargebeeEntitlementsClient,
+			cache: createMemoryEntitlementsCache(),
+			store: makeDurableStore(),
+			refreshOnMiss: "background",
+			onSnapshotRefreshed,
+		});
+		const target = { mode: "customer", customerId: "customer-1" } as const;
+
+		await expect(
+			provider.resolveBooleanEvaluation("sso", false, context, console),
+		).resolves.toMatchObject({ reason: "STALE" });
+		await vi.waitFor(() => expect(customerRequest).toHaveBeenCalledTimes(1));
+
+		const explicitRefresh = provider.refreshSnapshot(target);
+		await vi.waitFor(() => expect(customerRequest).toHaveBeenCalledTimes(2));
+		await expect(explicitRefresh).resolves.toMatchObject({
+			snapshot: {
+				entitlements: { sso: expect.objectContaining({ value: "false" }) },
+			},
+		});
+
+		releaseFirst?.();
+		await firstFinished;
+		expect(onSnapshotRefreshed).toHaveBeenCalledTimes(1);
+		expect(onSnapshotRefreshed).toHaveBeenCalledWith(
+			expect.objectContaining({ trigger: "explicit" }),
+		);
+		await expect(provider.getSnapshot(context)).resolves.toMatchObject({
+			snapshot: {
+				entitlements: { sso: expect.objectContaining({ value: "false" }) },
+			},
+		});
+	});
+
+	it("reports a pending snapshot and refreshes in the background", async () => {
+		const { client, customerRequest } = makeClient([ssoPage]);
+		const onSnapshotRefreshed = vi.fn();
+		const provider = new ChargebeeEntitlementsProvider({
+			chargebeeClient: client,
+			store: createMemoryEntitlementsCache(),
+			refreshOnMiss: "background",
+			onSnapshotRefreshed,
+		});
+
+		await expect(
+			provider.resolveBooleanEvaluation("sso", false, context, console),
+		).resolves.toEqual({
+			value: false,
+			reason: "STALE",
+			flagMetadata: { snapshotPending: true },
+		});
+
+		await vi.waitFor(() =>
+			expect(onSnapshotRefreshed).toHaveBeenCalledWith(
+				expect.objectContaining({ trigger: "request" }),
+			),
+		);
+		await expect(
+			provider.resolveBooleanEvaluation("sso", false, context, console),
+		).resolves.toMatchObject({ value: true, reason: "CACHED" });
+		expect(customerRequest).toHaveBeenCalledTimes(1);
+	});
+
+	it("serves an expired stored snapshot while refreshing it", async () => {
+		const { client, customerRequest } = makeClient([ssoPage]);
+		const provider = new ChargebeeEntitlementsProvider({
+			chargebeeClient: client,
+			store: makeDurableStore(),
+			snapshotTtlMs: 1,
+			refreshOnMiss: "background",
+		});
+		await provider.refreshSnapshot({
+			mode: "customer",
+			customerId: "customer-1",
+		});
+		await new Promise((resolve) => setTimeout(resolve, 5));
+
+		await expect(provider.getSnapshot(context)).resolves.toMatchObject({
+			source: "store",
+		});
+		await vi.waitFor(() => expect(customerRequest).toHaveBeenCalledTimes(2));
+	});
+
+	it("backs off after a failed background refresh", async () => {
+		const customerRequest = vi.fn(async () => {
+			throw new Error("chargebee unavailable");
+		});
+		const onError = vi.fn();
+		const provider = new ChargebeeEntitlementsProvider({
+			chargebeeClient: {
+				customerEntitlement: { entitlementsForCustomer: customerRequest },
+				subscriptionEntitlement: {
+					subscriptionEntitlementsForSubscription: vi.fn(),
+				},
+			} as unknown as ChargebeeEntitlementsClient,
+			refreshOnMiss: "background",
+			refreshBackoffMs: 60_000,
+			onError,
+		});
+
+		await provider.resolveBooleanEvaluation("sso", false, context, console);
+		await vi.waitFor(() =>
+			expect(onError).toHaveBeenCalledWith(
+				expect.any(Error),
+				expect.objectContaining({ operation: "refresh" }),
+			),
+		);
+		await provider.resolveBooleanEvaluation("sso", false, context, console);
+
+		expect(customerRequest).toHaveBeenCalledTimes(1);
 	});
 
 	it("works through the OpenFeature server SDK", async () => {

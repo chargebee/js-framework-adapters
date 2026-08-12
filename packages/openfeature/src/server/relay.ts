@@ -2,13 +2,19 @@ import type { EvaluationContext } from "@openfeature/server-sdk";
 import { CHARGEBEE_CONTEXT_KEYS } from "../shared";
 import type { ChargebeeEntitlementsProvider } from "./provider";
 
-export interface CreateEntitlementsRelayHandlerOptions {
+export type EntitlementsRelayHandler<TRequest extends Request = Request> = (
+	request: TRequest,
+) => Promise<Response>;
+
+export interface CreateEntitlementsRelayHandlerOptions<
+	TRequest extends Request = Request,
+> {
 	provider: ChargebeeEntitlementsProvider;
 	resolveContext: (
-		request: Request,
+		request: TRequest,
 	) => EvaluationContext | null | Promise<EvaluationContext | null>;
 	snapshotTtlMs?: number;
-	onError?: (error: unknown, request: Request) => Response | Promise<Response>;
+	onError?: (error: unknown, request: TRequest) => Response | Promise<Response>;
 }
 
 const responseHeaders = {
@@ -22,9 +28,11 @@ const json = (
 	headers: HeadersInit = responseHeaders,
 ) => Response.json(body, { status, headers });
 
-export function createEntitlementsRelayHandler(
-	options: CreateEntitlementsRelayHandlerOptions,
-): (request: Request) => Promise<Response> {
+export function createEntitlementsRelayHandler<
+	TRequest extends Request = Request,
+>(
+	options: CreateEntitlementsRelayHandlerOptions<TRequest>,
+): EntitlementsRelayHandler<TRequest> {
 	return async (request) => {
 		try {
 			if (request.method !== "GET") {

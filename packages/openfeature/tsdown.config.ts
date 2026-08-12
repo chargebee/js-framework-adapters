@@ -3,17 +3,18 @@ import { defineConfig } from "tsdown";
 export default defineConfig({
 	dts: { build: true, incremental: true },
 	format: ["esm"],
-	entry: [
-		"./src/index.ts",
-		"./src/cache.ts",
-		"./src/server.ts",
-		"./src/web.ts",
-		"./src/nextjs.ts",
-	],
+	entry: {
+		index: "./src/index.ts",
+		cache: "./src/cache/index.ts",
+		server: "./src/server/index.ts",
+		web: "./src/web/index.ts",
+		nextjs: "./src/nextjs.ts",
+	},
 	external: [
 		"@openfeature/server-sdk",
 		"@openfeature/web-sdk",
 		"chargebee",
+		"ioredis",
 		"next",
 		"next/server",
 		"server-only",

@@ -11,12 +11,14 @@ import {
 import {
 	type ChargebeeEntitlementsSnapshot,
 	type EntitlementResolution,
+	errorResolution,
 	isSnapshotExpired,
 	parseEntitlementsSnapshot,
 	resolveBooleanEntitlement,
 	resolveNumberEntitlement,
 	resolveObjectEntitlement,
 	resolveStringEntitlement,
+	toResolutionDetails,
 } from "../shared";
 
 export interface ChargebeeEntitlementsWebProviderOptions {
@@ -145,7 +147,7 @@ export class ChargebeeEntitlementsWebProvider implements Provider {
 	): ResolutionDetails<T> {
 		const snapshot = this.getUsableSnapshot(defaultValue);
 		return "entitlements" in snapshot
-			? this.toResolution(resolve(snapshot))
+			? toResolutionDetails<T, ErrorCode>(resolve(snapshot))
 			: snapshot;
 	}
 
@@ -153,12 +155,13 @@ export class ChargebeeEntitlementsWebProvider implements Provider {
 		defaultValue: T,
 	): ChargebeeEntitlementsSnapshot | ResolutionDetails<T> {
 		if (!this.snapshot) {
-			return {
-				value: defaultValue,
-				reason: "ERROR",
-				errorCode: "PROVIDER_NOT_READY" as ErrorCode,
-				errorMessage: "Chargebee entitlement snapshot is not loaded",
-			};
+			return toResolutionDetails<T, ErrorCode>(
+				errorResolution(
+					defaultValue,
+					"PROVIDER_NOT_READY",
+					"Chargebee entitlement snapshot is not loaded",
+				),
+			);
 		}
 
 		if (!isSnapshotExpired(this.snapshot)) return this.snapshot;
@@ -182,15 +185,6 @@ export class ChargebeeEntitlementsWebProvider implements Provider {
 		}
 
 		return { value: defaultValue, reason: "STALE" };
-	}
-
-	private toResolution<T>(
-		resolution: EntitlementResolution<T>,
-	): ResolutionDetails<T> {
-		return {
-			...resolution,
-			errorCode: resolution.errorCode as ErrorCode | undefined,
-		};
 	}
 
 	private async loadSnapshot(emitChange: boolean): Promise<void> {

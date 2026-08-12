@@ -1,9 +1,22 @@
 import {
+	createMemoryEntitlementsCache,
 	createRedisEntitlementsCache,
-	MemoryEntitlementsCache,
-	TieredEntitlementsCache,
+	type RedisEntitlementsCacheClient,
 } from "../src/cache";
 import { createEntitlementsSnapshot } from "../src/shared";
+
+/** A minimal stand-in for the ioredis methods `createRedisEntitlementsCache` uses. */
+function makeRedisClient(values = new Map<string, string>()) {
+	const mocks = {
+		get: vi.fn(async (key: string) => values.get(key) ?? null),
+		set: vi.fn(async (key: string, value: string) => {
+			values.set(key, value);
+			return "OK" as const;
+		}),
+		del: vi.fn(async (key: string) => (values.delete(key) ? 1 : 0)),
+	};
+	return { client: mocks as unknown as RedisEntitlementsCacheClient, mocks };
+}
 
 function makeSnapshot(ttlMs = 60_000) {
 	return createEntitlementsSnapshot(
@@ -13,10 +26,10 @@ function makeSnapshot(ttlMs = 60_000) {
 	);
 }
 
-describe("MemoryEntitlementsCache", () => {
+describe("memory entitlement cache", () => {
 	it("expires entries and evicts the least recently used entry", async () => {
 		let now = 1_000;
-		const cache = new MemoryEntitlementsCache({
+		const cache = createMemoryEntitlementsCache({
 			maxEntries: 2,
 			now: () => now,
 		});
@@ -32,21 +45,25 @@ describe("MemoryEntitlementsCache", () => {
 		now += 101;
 		expect(await cache.get("a")).toBeUndefined();
 	});
+
+	it("applies the configured TTL when the caller does not pass one", async () => {
+		let now = 1_000;
+		const cache = createMemoryEntitlementsCache({ ttlMs: 500, now: () => now });
+
+		await cache.set("a", makeSnapshot());
+
+		now += 499;
+		expect(await cache.get("a")).toBeDefined();
+		now += 2;
+		expect(await cache.get("a")).toBeUndefined();
+	});
 });
 
 describe("Redis entitlement cache", () => {
 	it("serializes snapshots and removes corrupt values", async () => {
 		const values = new Map<string, string>();
-		const commands = {
-			get: vi.fn(async (key: string) => values.get(key)),
-			set: vi.fn(async (key: string, value: string) => {
-				values.set(key, value);
-			}),
-			delete: vi.fn(async (key: string) => {
-				values.delete(key);
-			}),
-		};
-		const cache = createRedisEntitlementsCache(commands);
+		const { client, mocks } = makeRedisClient(values);
+		const cache = createRedisEntitlementsCache(client);
 		const snapshot = makeSnapshot();
 
 		await cache.set("valid", snapshot, 300_000);
@@ -54,45 +71,40 @@ describe("Redis entitlement cache", () => {
 
 		values.set("invalid", "{not-json");
 		expect(await cache.get("invalid")).toBeUndefined();
-		expect(commands.delete).toHaveBeenCalledWith("invalid");
-	});
-});
-
-describe("TieredEntitlementsCache", () => {
-	it("hydrates memory from Redis and falls back when Redis fails", async () => {
-		const snapshot = makeSnapshot();
-		const memory = new MemoryEntitlementsCache();
-		const redis = {
-			get: vi.fn(async () => snapshot),
-			set: vi.fn(async () => undefined),
-			delete: vi.fn(async () => undefined),
-		};
-		const onError = vi.fn();
-		const cache = new TieredEntitlementsCache({ memory, redis, onError });
-
-		expect(await cache.get("target")).toMatchObject({ source: "redis", snapshot });
-		expect(await cache.get("target")).toMatchObject({ source: "memory", snapshot });
-		expect(redis.get).toHaveBeenCalledTimes(1);
-
-		redis.get.mockRejectedValueOnce(new Error("redis unavailable"));
-		expect(await cache.get("another-target")).toBeUndefined();
-		expect(onError).toHaveBeenCalledWith(expect.any(Error), "redis");
+		expect(mocks.del).toHaveBeenCalledWith("invalid");
 	});
 
-	it("invalidates both layers", async () => {
+	it("applies the configured TTL when the caller does not pass one", async () => {
+		const { client, mocks } = makeRedisClient();
+		const cache = createRedisEntitlementsCache(client, { ttlMs: 45_000 });
 		const snapshot = makeSnapshot();
-		const memory = new MemoryEntitlementsCache();
-		const redis = {
-			get: vi.fn(async () => undefined),
-			set: vi.fn(async () => undefined),
-			delete: vi.fn(async () => undefined),
-		};
-		const cache = new TieredEntitlementsCache({ memory, redis });
 
-		await cache.set("target", snapshot);
-		await cache.delete("target");
+		await cache.set("default-ttl", snapshot);
+		await cache.set("explicit-ttl", snapshot, 1_000);
 
-		expect(await memory.get("target")).toBeUndefined();
-		expect(redis.delete).toHaveBeenCalledWith("target");
+		expect(mocks.set).toHaveBeenNthCalledWith(
+			1,
+			"default-ttl",
+			expect.any(String),
+			"PX",
+			45_000,
+		);
+		expect(mocks.set).toHaveBeenNthCalledWith(
+			2,
+			"explicit-ttl",
+			expect.any(String),
+			"PX",
+			1_000,
+		);
+	});
+
+	it("leaves snapshot freshness to the provider", async () => {
+		const { client } = makeRedisClient();
+		const cache = createRedisEntitlementsCache(client);
+		const expired = makeSnapshot(-1_000);
+
+		await cache.set("expired", expired, 1_000);
+
+		expect(await cache.get("expired")).toEqual(expired);
 	});
 });

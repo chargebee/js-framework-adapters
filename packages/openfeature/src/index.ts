@@ -3,8 +3,8 @@ export type {
 	ChargebeeEntitlementsSnapshot,
 	ChargebeeEvaluationMode,
 	ChargebeeTarget,
-	EntitlementCacheSource,
 	EvaluationContextLike,
+	SnapshotSource,
 } from "./shared";
 export {
 	CHARGEBEE_CONTEXT_KEYS,

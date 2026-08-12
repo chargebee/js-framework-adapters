@@ -40,7 +40,7 @@ describe("entitlement mapping", () => {
 			reason: "TARGETING_MATCH",
 		});
 		expect(
-			resolveBooleanEntitlement(snapshot, "switch-off", true, "memory"),
+			resolveBooleanEntitlement(snapshot, "switch-off", true, "cache"),
 		).toMatchObject({
 			value: false,
 			reason: "CACHED",
@@ -54,7 +54,7 @@ describe("entitlement mapping", () => {
 	});
 
 	it("maps numeric and unlimited entitlements", () => {
-		expect(resolveNumberEntitlement(snapshot, "seats", 0, "redis")).toMatchObject(
+		expect(resolveNumberEntitlement(snapshot, "seats", 0, "store")).toMatchObject(
 			{
 				value: 25,
 				reason: "CACHED",

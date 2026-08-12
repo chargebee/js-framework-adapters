@@ -34,7 +34,11 @@ export interface ChargebeeEntitlementsSnapshot {
 	entitlements: Record<string, ChargebeeEntitlement>;
 }
 
-export type EntitlementCacheSource = "api" | "memory" | "redis" | "relay";
+/**
+ * Where a resolved snapshot came from: the Chargebee API, the shared cache,
+ * the durable snapshot store, or the browser relay.
+ */
+export type SnapshotSource = "api" | "cache" | "store" | "relay";
 
 export type EntitlementErrorCode =
 	| "PROVIDER_NOT_READY"

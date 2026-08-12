@@ -1,51 +1,22 @@
 import "server-only";
 
-import type { EvaluationContext } from "@openfeature/server-sdk";
 import type { NextRequest } from "next/server";
 import {
-	type ChargebeeEntitlementsProvider,
-	createEntitlementsRelayHandler,
+	type CreateEntitlementsRelayHandlerOptions,
+	createEntitlementsRelayHandler as createRelayHandler,
+	type EntitlementsRelayHandler,
 } from "./server";
 
-export interface CreateChargebeeEntitlementsHandlerOptions {
-	provider: ChargebeeEntitlementsProvider;
-	resolveContext: (
-		request: NextRequest,
-	) => EvaluationContext | null | Promise<EvaluationContext | null>;
-	snapshotTtlMs?: number;
-	onError?: (
-		error: unknown,
-		request: NextRequest,
-	) => Response | Promise<Response>;
+/**
+ * Builds an App Router `GET` handler that resolves billing identity on the
+ * server and returns a sanitized entitlement snapshot for the browser
+ * provider. This is the Next.js `NextRequest` instantiation of
+ * `createEntitlementsRelayHandler` from `@chargebee/openfeature/server`.
+ */
+export function createEntitlementsRelayHandler(
+	options: CreateEntitlementsRelayHandlerOptions<NextRequest>,
+): EntitlementsRelayHandler<NextRequest> {
+	return createRelayHandler<NextRequest>(options);
 }
 
-export type ChargebeeEntitlementsRouteHandler = (
-	request: NextRequest,
-) => Promise<Response>;
-
-export function createChargebeeEntitlementsHandler(
-	options: CreateChargebeeEntitlementsHandlerOptions,
-): ChargebeeEntitlementsRouteHandler {
-	const onError = options.onError;
-	const handler = createEntitlementsRelayHandler({
-		provider: options.provider,
-		resolveContext: (request) => options.resolveContext(request as NextRequest),
-		snapshotTtlMs: options.snapshotTtlMs,
-		onError: onError
-			? (error, request) => onError(error, request as NextRequest)
-			: undefined,
-	});
-
-	return (request: NextRequest) => handler(request);
-}
-
-export function createChargebeeEntitlementsRoute(
-	options: CreateChargebeeEntitlementsHandlerOptions,
-): { GET: ChargebeeEntitlementsRouteHandler } {
-	return { GET: createChargebeeEntitlementsHandler(options) };
-}
-
-export type {
-	ChargebeeEntitlementsProvider,
-	ChargebeeEntitlementsProviderOptions,
-} from "./server";
+export type { CreateEntitlementsRelayHandlerOptions, EntitlementsRelayHandler };

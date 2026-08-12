@@ -1,23 +1,24 @@
+import type Redis from "ioredis";
 import type { ChargebeeEntitlementsSnapshot } from "../shared";
 
-export interface EntitlementsCache {
+/**
+ * Storage contract shared by the fast shared cache and the durable snapshot
+ * store. Implement it over Redis, PostgreSQL, or any other backend.
+ */
+export interface EntitlementsStorage {
 	get(key: string): Promise<ChargebeeEntitlementsSnapshot | undefined>;
+	/**
+	 * Stores a snapshot. `ttlMs` is the caller's requested expiry; an
+	 * implementation configured with its own TTL applies that when omitted.
+	 */
 	set(
 		key: string,
 		value: ChargebeeEntitlementsSnapshot,
-		ttlMs: number,
+		ttlMs?: number,
 	): Promise<void>;
 	delete(key: string): Promise<void>;
 	clear?(): Promise<void>;
 }
 
-export interface CacheLookup {
-	snapshot: ChargebeeEntitlementsSnapshot;
-	source: "memory" | "redis";
-}
-
-export interface RedisCacheCommands {
-	get(key: string): Promise<string | null | undefined>;
-	set(key: string, value: string, ttlMs: number): Promise<void>;
-	delete(key: string): Promise<void>;
-}
+/** The subset of an ioredis `Redis` client that `createRedisEntitlementsCache` needs. */
+export type RedisEntitlementsCacheClient = Pick<Redis, "get" | "set" | "del">;

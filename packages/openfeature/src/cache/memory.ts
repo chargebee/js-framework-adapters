@@ -1,11 +1,10 @@
-import {
-	type ChargebeeEntitlementsSnapshot,
-	isSnapshotExpired,
-} from "../shared";
-import type { EntitlementsCache } from "./types";
+import type { ChargebeeEntitlementsSnapshot } from "../shared";
+import type { EntitlementsStorage } from "./types";
 
 export interface MemoryEntitlementsCacheOptions {
 	maxEntries?: number;
+	/** Expiry applied when `set` is called without one. Defaults to 60s. */
+	ttlMs?: number;
 	now?: () => number;
 }
 
@@ -14,61 +13,58 @@ interface MemoryCacheEntry {
 	expiresAt: number;
 }
 
-export class MemoryEntitlementsCache implements EntitlementsCache {
-	private readonly entries = new Map<string, MemoryCacheEntry>();
-	private readonly maxEntries: number;
-	private readonly now: () => number;
-
-	constructor(options: MemoryEntitlementsCacheOptions = {}) {
-		this.maxEntries = options.maxEntries ?? 500;
-		this.now = options.now ?? Date.now;
-		if (!Number.isInteger(this.maxEntries) || this.maxEntries < 1) {
-			throw new Error("maxEntries must be a positive integer");
-		}
+export function createMemoryEntitlementsCache(
+	options: MemoryEntitlementsCacheOptions = {},
+): EntitlementsStorage {
+	const maxEntries = options.maxEntries ?? 500;
+	const ttlMs = options.ttlMs ?? 60_000;
+	const now = options.now ?? Date.now;
+	if (!Number.isInteger(maxEntries) || maxEntries < 1) {
+		throw new Error("maxEntries must be a positive integer");
+	}
+	if (!Number.isFinite(ttlMs) || ttlMs <= 0) {
+		throw new Error("ttlMs must be a positive number");
 	}
 
-	async get(key: string): Promise<ChargebeeEntitlementsSnapshot | undefined> {
-		const entry = this.entries.get(key);
-		if (!entry) return undefined;
+	const entries = new Map<string, MemoryCacheEntry>();
 
-		if (
-			entry.expiresAt <= this.now() ||
-			isSnapshotExpired(entry.snapshot, this.now())
-		) {
-			this.entries.delete(key);
-			return undefined;
-		}
+	return {
+		async get(key) {
+			const entry = entries.get(key);
+			if (!entry) return undefined;
 
-		// Moving a hit to the end makes Map insertion order an LRU list.
-		this.entries.delete(key);
-		this.entries.set(key, entry);
-		return entry.snapshot;
-	}
+			if (entry.expiresAt <= now()) {
+				entries.delete(key);
+				return undefined;
+			}
 
-	async set(
-		key: string,
-		snapshot: ChargebeeEntitlementsSnapshot,
-		ttlMs: number,
-	): Promise<void> {
-		if (ttlMs <= 0) return;
-		this.entries.delete(key);
-		this.entries.set(key, {
-			snapshot,
-			expiresAt: this.now() + ttlMs,
-		});
+			// Moving a hit to the end makes Map insertion order an LRU list.
+			entries.delete(key);
+			entries.set(key, entry);
+			return entry.snapshot;
+		},
 
-		while (this.entries.size > this.maxEntries) {
-			const oldestKey = this.entries.keys().next().value;
-			if (oldestKey === undefined) return;
-			this.entries.delete(oldestKey);
-		}
-	}
+		async set(key, snapshot, entryTtlMs = ttlMs) {
+			if (entryTtlMs <= 0) return;
+			entries.delete(key);
+			entries.set(key, {
+				snapshot,
+				expiresAt: now() + entryTtlMs,
+			});
 
-	async delete(key: string): Promise<void> {
-		this.entries.delete(key);
-	}
+			while (entries.size > maxEntries) {
+				const oldestKey = entries.keys().next().value;
+				if (oldestKey === undefined) return;
+				entries.delete(oldestKey);
+			}
+		},
 
-	async clear(): Promise<void> {
-		this.entries.clear();
-	}
+		async delete(key) {
+			entries.delete(key);
+		},
+
+		async clear() {
+			entries.clear();
+		},
+	};
 }

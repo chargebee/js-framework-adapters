@@ -31,17 +31,17 @@
       "default": "./dist/index.mjs"
     },
     "./cache": {
-      "dev-source": "./src/cache.ts",
+      "dev-source": "./src/cache/index.ts",
       "types": "./dist/cache.d.mts",
       "default": "./dist/cache.mjs"
     },
     "./server": {
-      "dev-source": "./src/server.ts",
+      "dev-source": "./src/server/index.ts",
       "types": "./dist/server.d.mts",
       "default": "./dist/server.mjs"
     },
     "./web": {
-      "dev-source": "./src/web.ts",
+      "dev-source": "./src/web/index.ts",
       "types": "./dist/web.d.mts",
       "default": "./dist/web.mjs"
     },
@@ -100,6 +100,7 @@
     "@types/node": "22.15.2",
     "@vitest/coverage-v8": "^4.0.18",
     "chargebee": "^3.30.0",
+    "ioredis": "^6.0.0",
     "next": "^16.3.0",
     "publint": "^0.3.23",
     "tsdown": "^0.20.3",
@@ -110,6 +111,7 @@
     "@openfeature/server-sdk": "^1.23.0",
     "@openfeature/web-sdk": "^1.10.0",
     "chargebee": "^3.30.0",
+    "ioredis": "^6.0.0",
     "next": "^16.0.0"
   },
   "peerDependenciesMeta": {
@@ -120,6 +122,9 @@
       "optional": true
     },
     "chargebee": {
+      "optional": true
+    },
+    "ioredis": {
       "optional": true
     },
     "next": {

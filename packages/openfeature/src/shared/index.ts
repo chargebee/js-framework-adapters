@@ -1,25 +1,27 @@
-export { getTargetFromContext } from "./shared/context";
+export { getTargetFromContext } from "./context";
 export {
+	errorResolution,
 	resolveBooleanEntitlement,
 	resolveNumberEntitlement,
 	resolveObjectEntitlement,
 	resolveStringEntitlement,
-} from "./shared/evaluation";
+	toResolutionDetails,
+} from "./evaluation";
 export {
 	createEntitlementsSnapshot,
 	isSnapshotExpired,
 	parseEntitlementsSnapshot,
 	parseSerializedEntitlementsSnapshot,
 	serializeEntitlementsSnapshot,
-} from "./shared/snapshot";
+} from "./snapshot";
 export {
 	CHARGEBEE_CONTEXT_KEYS,
 	type ChargebeeEntitlement,
 	type ChargebeeEntitlementsSnapshot,
 	type ChargebeeEvaluationMode,
 	type ChargebeeTarget,
-	type EntitlementCacheSource,
 	type EntitlementErrorCode,
 	type EntitlementResolution,
 	type EvaluationContextLike,
-} from "./shared/types";
+	type SnapshotSource,
+} from "./types";
