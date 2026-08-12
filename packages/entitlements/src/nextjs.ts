@@ -9,9 +9,9 @@ import {
 
 /**
  * Builds an App Router `GET` handler that resolves billing identity on the
- * server and returns a sanitized entitlement snapshot for the browser
- * provider. This is the Next.js `NextRequest` instantiation of
- * `createEntitlementsRelayHandler` from `@chargebee/openfeature/server`.
+ * server and returns a sanitized entitlement snapshot for a browser client.
+ * This is the Next.js `NextRequest` instantiation of
+ * `createEntitlementsRelayHandler` from `@chargebee/entitlements/server`.
  */
 export function createEntitlementsRelayHandler(
 	options: CreateEntitlementsRelayHandlerOptions<NextRequest>,

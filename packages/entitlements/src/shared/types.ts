@@ -14,6 +14,17 @@ export type EvaluationContextLike = Record<string, unknown> & {
 	targetingKey?: string;
 };
 
+/**
+ * A minimal, framework-agnostic logger. Structurally compatible with
+ * `console` and with the `Logger` type OpenFeature SDKs pass to providers.
+ */
+export interface Logger {
+	error(...args: unknown[]): void;
+	warn(...args: unknown[]): void;
+	info(...args: unknown[]): void;
+	debug(...args: unknown[]): void;
+}
+
 export interface ChargebeeEntitlement {
 	featureId: string;
 	value?: string;

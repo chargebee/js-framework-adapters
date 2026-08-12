@@ -1,5 +1,5 @@
-import { OpenFeature } from "@openfeature/web-sdk";
-import { createEntitlementsSnapshot } from "../src/shared";
+import { createEntitlementsSnapshot } from "@chargebee/entitlements";
+import { OpenFeature, ProviderEvents } from "@openfeature/web-sdk";
 import { ChargebeeEntitlementsWebProvider } from "../src/web";
 
 afterEach(async () => {
@@ -31,7 +31,7 @@ describe("ChargebeeEntitlementsWebProvider", () => {
 		);
 	});
 
-	it("fails closed when the relay snapshot expires", async () => {
+	it("emits Stale and falls back to the default while the relay snapshot expires", async () => {
 		const snapshot = createEntitlementsSnapshot(
 			"customer",
 			[{ featureId: "sso", value: "true", isEnabled: true }],
@@ -42,17 +42,17 @@ describe("ChargebeeEntitlementsWebProvider", () => {
 			relayUrl: "/api/entitlements",
 			fetchImplementation: async () => Response.json(snapshot),
 		});
+		const onStale = vi.fn();
+		provider.events.addHandler(ProviderEvents.Stale, onStale);
 		await provider.initialize();
 
 		expect(
 			provider.resolveBooleanEvaluation("sso", false, {}, console),
-		).toMatchObject({
-			value: false,
-			reason: "STALE",
-		});
+		).toMatchObject({ value: false, reason: "STALE" });
+		expect(onStale).toHaveBeenCalledTimes(1);
 	});
 
-	it("refreshes its snapshot when context changes", async () => {
+	it("emits ConfigurationChanged and refreshes its snapshot on context change", async () => {
 		const first = createEntitlementsSnapshot(
 			"customer",
 			[{ featureId: "sso", value: "false", isEnabled: true }],
@@ -71,6 +71,11 @@ describe("ChargebeeEntitlementsWebProvider", () => {
 			relayUrl: "/api/entitlements",
 			fetchImplementation,
 		});
+		const onConfigurationChanged = vi.fn();
+		provider.events.addHandler(
+			ProviderEvents.ConfigurationChanged,
+			onConfigurationChanged,
+		);
 
 		await provider.initialize();
 		expect(
@@ -80,6 +85,9 @@ describe("ChargebeeEntitlementsWebProvider", () => {
 		expect(
 			provider.resolveBooleanEvaluation("sso", false, {}, console).value,
 		).toBe(true);
+		expect(onConfigurationChanged).toHaveBeenCalledWith(
+			expect.objectContaining({ flagsChanged: ["sso"] }),
+		);
 	});
 
 	it("does not retain the previous subject's snapshot after a failed context change", async () => {
@@ -112,5 +120,20 @@ describe("ChargebeeEntitlementsWebProvider", () => {
 			value: false,
 			errorCode: "PROVIDER_NOT_READY",
 		});
+	});
+
+	it("delegates onClose to the wrapped client", async () => {
+		const provider = new ChargebeeEntitlementsWebProvider({
+			relayUrl: "/api/entitlements",
+			fetchImplementation: async () =>
+				Response.json(
+					createEntitlementsSnapshot("customer", [], 60_000),
+				),
+		});
+		const close = vi.spyOn(provider.client, "close");
+
+		await provider.onClose();
+
+		expect(close).toHaveBeenCalledTimes(1);
 	});
 });

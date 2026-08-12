@@ -1,21 +1,21 @@
 {
-  "name": "@chargebee/openfeature",
+  "name": "@chargebee/entitlements",
   "author": "DX Chargebee",
   "version": "0.1.0-alpha.1",
   "type": "module",
-  "description": "OpenFeature provider for Chargebee",
+  "description": "Framework-agnostic Chargebee entitlements resolution",
   "license": "MIT",
-  "homepage": "https://github.com/chargebee/js-framework-adapters/blob/main/packages/openfeature/README.md",
+  "homepage": "https://github.com/chargebee/js-framework-adapters/blob/main/packages/entitlements/README.md",
   "repository": {
     "type": "git",
     "url": "git@github.com:chargebee/js-framework-adapters.git",
-    "directory": "packages/openfeature"
+    "directory": "packages/entitlements"
   },
   "keywords": [
     "chargebee",
-    "openfeature",
     "entitlements",
-    "feature-flags"
+    "feature-flags",
+    "nextjs"
   ],
   "engines": {
     "node": ">=22"
@@ -29,6 +29,11 @@
       "types": "./dist/index.d.mts",
       "default": "./dist/index.mjs"
     },
+    "./cache": {
+      "dev-source": "./src/cache/index.ts",
+      "types": "./dist/cache.d.mts",
+      "default": "./dist/cache.mjs"
+    },
     "./server": {
       "dev-source": "./src/server/index.ts",
       "types": "./dist/server.d.mts",
@@ -38,6 +43,11 @@
       "dev-source": "./src/web/index.ts",
       "types": "./dist/web.d.mts",
       "default": "./dist/web.mjs"
+    },
+    "./nextjs": {
+      "dev-source": "./src/nextjs.ts",
+      "types": "./dist/nextjs.d.mts",
+      "default": "./dist/nextjs.mjs"
     }
   },
   "typesVersions": {
@@ -45,11 +55,17 @@
       "*": [
         "./dist/index.d.mts"
       ],
+      "cache": [
+        "./dist/cache.d.mts"
+      ],
       "server": [
         "./dist/server.d.mts"
       ],
       "web": [
         "./dist/web.d.mts"
+      ],
+      "nextjs": [
+        "./dist/nextjs.d.mts"
       ]
     }
   },
@@ -62,7 +78,7 @@
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
-    "typecheck": "tsc --build tsconfig.json",
+    "typecheck": "tsc --project tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
@@ -73,29 +89,34 @@
     "access": "public"
   },
   "dependencies": {
-    "@chargebee/entitlements": "workspace:*"
+    "server-only": "^0.0.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
-    "@openfeature/server-sdk": "^1.23.0",
-    "@openfeature/web-sdk": "^1.10.0",
     "@types/node": "22.15.2",
     "@vitest/coverage-v8": "^4.0.18",
     "chargebee": "^3.30.0",
+    "ioredis": "^6.0.0",
+    "next": "^16.3.0",
     "publint": "^0.3.23",
     "tsdown": "^0.20.3",
     "typescript": "^5.9.2",
     "vitest": "^4.0.18"
   },
   "peerDependencies": {
-    "@openfeature/server-sdk": "^1.23.0",
-    "@openfeature/web-sdk": "^1.10.0"
+    "chargebee": "^3.30.0",
+    "ioredis": "^6.0.0",
+    "next": "^16.0.0"
   },
   "peerDependenciesMeta": {
-    "@openfeature/server-sdk": {
+    "chargebee": {
       "optional": true
     },
-    "@openfeature/web-sdk": {
+    "ioredis": {
+      "optional": true
+    },
+    "next": {
       "optional": true
     }
   }

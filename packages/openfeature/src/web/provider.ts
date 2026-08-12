@@ -1,3 +1,8 @@
+import { toResolutionDetails } from "@chargebee/entitlements";
+import {
+	ChargebeeEntitlementsWebClient,
+	type ChargebeeEntitlementsWebClientOptions,
+} from "@chargebee/entitlements/web";
 import {
 	type ErrorCode,
 	type EvaluationContext,
@@ -8,91 +13,57 @@ import {
 	ProviderEvents,
 	type ResolutionDetails,
 } from "@openfeature/web-sdk";
-import {
-	type ChargebeeEntitlementsSnapshot,
-	type EntitlementResolution,
-	errorResolution,
-	isSnapshotExpired,
-	parseEntitlementsSnapshot,
-	resolveBooleanEntitlement,
-	resolveNumberEntitlement,
-	resolveObjectEntitlement,
-	resolveStringEntitlement,
-	toResolutionDetails,
-} from "../shared";
 
-export interface ChargebeeEntitlementsWebProviderOptions {
-	relayUrl: string | URL;
-	fetchImplementation?: typeof fetch;
-	credentials?: RequestCredentials;
-	requestHeaders?: HeadersInit;
-}
+export type ChargebeeEntitlementsWebProviderOptions = Omit<
+	ChargebeeEntitlementsWebClientOptions,
+	"onStale" | "onConfigurationChanged" | "onError"
+>;
 
-const changedFlags = (
-	before: ChargebeeEntitlementsSnapshot | undefined,
-	after: ChargebeeEntitlementsSnapshot,
-) =>
-	[
-		...new Set([
-			...Object.keys(before?.entitlements ?? {}),
-			...Object.keys(after.entitlements),
-		]),
-	].filter(
-		(flag) =>
-			JSON.stringify(before?.entitlements[flag]) !==
-			JSON.stringify(after.entitlements[flag]),
-	);
-
+/**
+ * Adapts `@chargebee/entitlements`'s framework-agnostic
+ * `ChargebeeEntitlementsWebClient` to the OpenFeature web `Provider`
+ * interface. All relay-fetch and evaluation logic lives in
+ * `ChargebeeEntitlementsWebClient` (exposed here as `.client`) — this class
+ * only bridges its callbacks to OpenFeature's event emitter.
+ */
 export class ChargebeeEntitlementsWebProvider implements Provider {
 	readonly metadata = { name: "Chargebee Entitlements" } as const;
 	readonly runsOn = "client" as const;
 	readonly events = new OpenFeatureEventEmitter();
-
-	private readonly relayUrl: string;
-	private readonly fetchImplementation: typeof fetch;
-	private readonly credentials: RequestCredentials;
-	private readonly requestHeaders?: HeadersInit;
-	private snapshot?: ChargebeeEntitlementsSnapshot;
-	private staleEventEmitted = false;
-	private closed = false;
-	private refreshInProgress = false;
+	readonly client: ChargebeeEntitlementsWebClient;
 
 	constructor(options: ChargebeeEntitlementsWebProviderOptions) {
-		if (!options?.relayUrl) throw new Error("relayUrl is required");
-		this.relayUrl = options.relayUrl.toString();
-		this.fetchImplementation = options.fetchImplementation ?? globalThis.fetch;
-		if (!this.fetchImplementation) {
-			throw new Error("A fetch implementation is required");
-		}
-		this.credentials = options.credentials ?? "same-origin";
-		this.requestHeaders = options.requestHeaders;
+		this.client = new ChargebeeEntitlementsWebClient({
+			...options,
+			onStale: () => {
+				this.events.emit(ProviderEvents.Stale, {
+					message: "Chargebee entitlement snapshot expired",
+				});
+			},
+			onConfigurationChanged: (flagsChanged) => {
+				this.events.emit(ProviderEvents.ConfigurationChanged, {
+					flagsChanged,
+				});
+			},
+			onError: (message) => {
+				this.events.emit(ProviderEvents.Error, { message });
+			},
+		});
 	}
 
-	async initialize(): Promise<void> {
-		this.closed = false;
-		await this.loadSnapshot(false);
+	initialize(): Promise<void> {
+		return this.client.initialize();
 	}
 
-	async onContextChange(
+	onContextChange(
 		_oldContext: EvaluationContext,
 		_newContext: EvaluationContext,
 	): Promise<void> {
-		// A new session may represent a different billing subject.
-		this.snapshot = undefined;
-		this.staleEventEmitted = false;
-		this.refreshInProgress = false;
-		await this.refreshSnapshot();
+		return this.client.reset();
 	}
 
-	async onClose(): Promise<void> {
-		this.closed = true;
-		this.snapshot = undefined;
-		this.staleEventEmitted = false;
-		this.refreshInProgress = false;
-	}
-
-	refreshSnapshot(): Promise<void> {
-		return this.loadSnapshot(true);
+	onClose(): Promise<void> {
+		return this.client.close();
 	}
 
 	resolveBooleanEvaluation(
@@ -101,8 +72,8 @@ export class ChargebeeEntitlementsWebProvider implements Provider {
 		_context: EvaluationContext,
 		_logger: Logger,
 	): ResolutionDetails<boolean> {
-		return this.evaluate(defaultValue, (snapshot) =>
-			resolveBooleanEntitlement(snapshot, flagKey, defaultValue, "relay"),
+		return toResolutionDetails<boolean, ErrorCode>(
+			this.client.getBooleanValue(flagKey, defaultValue),
 		);
 	}
 
@@ -112,8 +83,8 @@ export class ChargebeeEntitlementsWebProvider implements Provider {
 		_context: EvaluationContext,
 		_logger: Logger,
 	): ResolutionDetails<string> {
-		return this.evaluate(defaultValue, (snapshot) =>
-			resolveStringEntitlement(snapshot, flagKey, defaultValue, "relay"),
+		return toResolutionDetails<string, ErrorCode>(
+			this.client.getStringValue(flagKey, defaultValue),
 		);
 	}
 
@@ -123,8 +94,8 @@ export class ChargebeeEntitlementsWebProvider implements Provider {
 		_context: EvaluationContext,
 		_logger: Logger,
 	): ResolutionDetails<number> {
-		return this.evaluate(defaultValue, (snapshot) =>
-			resolveNumberEntitlement(snapshot, flagKey, defaultValue, "relay"),
+		return toResolutionDetails<number, ErrorCode>(
+			this.client.getNumberValue(flagKey, defaultValue),
 		);
 	}
 
@@ -134,94 +105,8 @@ export class ChargebeeEntitlementsWebProvider implements Provider {
 		_context: EvaluationContext,
 		_logger: Logger,
 	): ResolutionDetails<T> {
-		return this.evaluate(defaultValue, (snapshot) =>
-			resolveObjectEntitlement(snapshot, flagKey, defaultValue, "relay"),
+		return toResolutionDetails<T, ErrorCode>(
+			this.client.getObjectValue(flagKey, defaultValue),
 		);
-	}
-
-	private evaluate<T>(
-		defaultValue: T,
-		resolve: (
-			snapshot: ChargebeeEntitlementsSnapshot,
-		) => EntitlementResolution<T>,
-	): ResolutionDetails<T> {
-		const snapshot = this.getUsableSnapshot(defaultValue);
-		return "entitlements" in snapshot
-			? toResolutionDetails<T, ErrorCode>(resolve(snapshot))
-			: snapshot;
-	}
-
-	private getUsableSnapshot<T>(
-		defaultValue: T,
-	): ChargebeeEntitlementsSnapshot | ResolutionDetails<T> {
-		if (!this.snapshot) {
-			return toResolutionDetails<T, ErrorCode>(
-				errorResolution(
-					defaultValue,
-					"PROVIDER_NOT_READY",
-					"Chargebee entitlement snapshot is not loaded",
-				),
-			);
-		}
-
-		if (!isSnapshotExpired(this.snapshot)) return this.snapshot;
-
-		if (!this.staleEventEmitted) {
-			this.events.emit(ProviderEvents.Stale, {
-				message: "Chargebee entitlement snapshot expired",
-			});
-			this.staleEventEmitted = true;
-		}
-
-		if (!this.refreshInProgress && !this.closed) {
-			this.refreshInProgress = true;
-			this.refreshSnapshot()
-				.catch(() => {
-					// Errors are already handled in loadSnapshot
-				})
-				.finally(() => {
-					this.refreshInProgress = false;
-				});
-		}
-
-		return { value: defaultValue, reason: "STALE" };
-	}
-
-	private async loadSnapshot(emitChange: boolean): Promise<void> {
-		if (this.closed) throw new Error("Chargebee web provider is closed");
-
-		try {
-			const headers = new Headers(this.requestHeaders);
-			if (!headers.has("Accept")) headers.set("Accept", "application/json");
-			const response = await this.fetchImplementation(this.relayUrl, {
-				method: "GET",
-				cache: "no-store",
-				credentials: this.credentials,
-				headers,
-			});
-			if (!response.ok) {
-				throw new Error(
-					`Chargebee entitlement relay returned HTTP ${response.status}`,
-				);
-			}
-
-			const nextSnapshot = parseEntitlementsSnapshot(await response.json());
-			const flagsChanged = changedFlags(this.snapshot, nextSnapshot);
-			this.snapshot = nextSnapshot;
-			this.staleEventEmitted = false;
-			if (emitChange && flagsChanged.length > 0) {
-				this.events.emit(ProviderEvents.ConfigurationChanged, { flagsChanged });
-			}
-		} catch (error) {
-			if (emitChange) {
-				this.events.emit(ProviderEvents.Error, {
-					message:
-						error instanceof Error
-							? error.message
-							: "Unable to refresh Chargebee entitlements",
-				});
-			}
-			throw error;
-		}
 	}
 }

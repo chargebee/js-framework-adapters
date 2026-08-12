@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- Extracted all framework/SDK-agnostic logic (snapshot caching, background
+  refresh, Chargebee loading, evaluation, the browser relay) into a new
+  package, [`@chargebee/entitlements`](https://github.com/chargebee/js-framework-adapters/blob/main/packages/entitlements/README.md).
+  `@chargebee/openfeature` is now a thin adapter that implements OpenFeature's
+  `Provider` interface over `@chargebee/entitlements`'s `ChargebeeEntitlements`
+  (server) and `ChargebeeEntitlementsWebClient` (web) clients. Use
+  `@chargebee/entitlements` directly if you don't need an OpenFeature SDK.
+  - **Breaking:** removed the `/cache` and `/nextjs` subpaths, and the
+    `chargebee`, `ioredis`, and `next` peer dependencies — import
+    `createMemoryEntitlementsCache`/`createRedisEntitlementsCache` from
+    `@chargebee/entitlements/cache` and `createEntitlementsRelayHandler` from
+    `@chargebee/entitlements/nextjs` (or `/server`) instead.
+  - **Breaking:** `ChargebeeEntitlementsProvider` and
+    `ChargebeeEntitlementsWebProvider` no longer implement snapshot/cache
+    logic themselves; construct a `ChargebeeEntitlements` /
+    `ChargebeeEntitlementsWebClient` and pass it as `{ entitlements }` (or
+    keep passing the same options — the provider constructs one for you) and
+    read it back via the new `.entitlements` / `.client` properties.
+  - The default cache-key namespace moved with the cache module and changed
+    from `chargebee:openfeature:v1` to `chargebee:entitlements:v1`; pass
+    `cacheNamespace` explicitly if you need to keep reading previously cached
+    keys.
 - Replaced the tiered cache with a `cache` slot in front of a durable `store`
   slot on the server provider; both accept any `EntitlementsCache`.
 - Added `refreshOnMiss: "background"` so a missing snapshot resolves to caller

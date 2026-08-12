@@ -23,5 +23,6 @@ export {
 	type EntitlementErrorCode,
 	type EntitlementResolution,
 	type EvaluationContextLike,
+	type Logger,
 	type SnapshotSource,
 } from "./types";

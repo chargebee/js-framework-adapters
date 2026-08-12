@@ -5,15 +5,11 @@ export default defineConfig({
 	format: ["esm"],
 	entry: {
 		index: "./src/index.ts",
+		cache: "./src/cache/index.ts",
 		server: "./src/server/index.ts",
 		web: "./src/web/index.ts",
+		nextjs: "./src/nextjs.ts",
 	},
-	external: [
-		"@chargebee/entitlements",
-		"@chargebee/entitlements/server",
-		"@chargebee/entitlements/web",
-		"@openfeature/server-sdk",
-		"@openfeature/web-sdk",
-	],
+	external: ["chargebee", "ioredis", "next", "next/server", "server-only"],
 	sourcemap: true,
 });

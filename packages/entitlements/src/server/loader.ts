@@ -1,7 +1,6 @@
-import type { Logger } from "@openfeature/server-sdk";
 import type Chargebee from "chargebee";
 import type { CustomerEntitlement, SubscriptionEntitlement } from "chargebee";
-import type { ChargebeeEntitlement, ChargebeeTarget } from "../shared";
+import type { ChargebeeEntitlement, ChargebeeTarget, Logger } from "../shared";
 
 export type ChargebeeEntitlementsClient = Pick<
 	Chargebee,

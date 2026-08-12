@@ -4,6 +4,7 @@ overrides:
   chargebee-init: link:packages/cli
   '@chargebee/express': link:packages/express
   '@chargebee/nextjs': link:packages/nextjs
+  '@chargebee/entitlements': link:packages/entitlements
   '@chargebee/openfeature': link:packages/openfeature
 allowBuilds:
   '@biomejs/biome': true

@@ -7,7 +7,7 @@ export function createEntitlementsCacheKey(
 		consolidateCustomerEntitlements?: boolean;
 	} = {},
 ): string {
-	const namespace = options.namespace ?? "chargebee:openfeature:v1";
+	const namespace = options.namespace ?? "chargebee:entitlements:v1";
 	if (target.mode === "subscription") {
 		return `${namespace}:subscription:${encodeURIComponent(target.subscriptionId)}`;
 	}

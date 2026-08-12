@@ -1,18 +1,33 @@
-import type { EvaluationContext } from "@openfeature/server-sdk";
-import { CHARGEBEE_CONTEXT_KEYS } from "../shared";
-import type { ChargebeeEntitlementsProvider } from "./provider";
+import {
+	CHARGEBEE_CONTEXT_KEYS,
+	type ChargebeeEntitlementsSnapshot,
+	type ChargebeeTarget,
+	type EvaluationContextLike,
+} from "../shared";
 
 export type EntitlementsRelayHandler<TRequest extends Request = Request> = (
 	request: TRequest,
 ) => Promise<Response>;
 
+/** The subset of `ChargebeeEntitlements` (or an adapter over it) the relay needs. */
+export interface EntitlementsRelaySource {
+	getRelaySnapshot(
+		target: ChargebeeTarget | EvaluationContextLike,
+		ttlMs?: number,
+	): Promise<ChargebeeEntitlementsSnapshot>;
+}
+
 export interface CreateEntitlementsRelayHandlerOptions<
 	TRequest extends Request = Request,
 > {
-	provider: ChargebeeEntitlementsProvider;
+	entitlements: EntitlementsRelaySource;
 	resolveContext: (
 		request: TRequest,
-	) => EvaluationContext | null | Promise<EvaluationContext | null>;
+	) =>
+		| ChargebeeTarget
+		| EvaluationContextLike
+		| null
+		| Promise<ChargebeeTarget | EvaluationContextLike | null>;
 	snapshotTtlMs?: number;
 	onError?: (error: unknown, request: TRequest) => Response | Promise<Response>;
 }
@@ -56,7 +71,10 @@ export function createEntitlementsRelayHandler<
 			if (!context) return json({ error: "Unauthorized" }, 401);
 
 			return json(
-				await options.provider.getRelaySnapshot(context, options.snapshotTtlMs),
+				await options.entitlements.getRelaySnapshot(
+					context,
+					options.snapshotTtlMs,
+				),
 				200,
 			);
 		} catch (error) {

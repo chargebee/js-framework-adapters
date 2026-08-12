@@ -3,10 +3,12 @@ export type {
 	ChargebeeEntitlementsSnapshot,
 	ChargebeeEvaluationMode,
 	ChargebeeTarget,
+	EntitlementErrorCode,
+	EntitlementResolution,
 	EvaluationContextLike,
 	Logger,
 	SnapshotSource,
-} from "@chargebee/entitlements";
+} from "./shared";
 export {
 	CHARGEBEE_CONTEXT_KEYS,
 	createEntitlementsSnapshot,
@@ -15,4 +17,5 @@ export {
 	parseEntitlementsSnapshot,
 	parseSerializedEntitlementsSnapshot,
 	serializeEntitlementsSnapshot,
-} from "@chargebee/entitlements";
+	toResolutionDetails,
+} from "./shared";
