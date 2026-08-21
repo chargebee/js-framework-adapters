@@ -8,7 +8,7 @@ export function createEntitlementsCacheKey(
 	} = {},
 ): string {
 	const namespace = options.namespace ?? "chargebee:entitlements:v1";
-	if (target.mode === "subscription") {
+	if (target.subscriptionId !== undefined) {
 		return `${namespace}:subscription:${encodeURIComponent(target.subscriptionId)}`;
 	}
 

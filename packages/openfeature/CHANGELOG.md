@@ -24,7 +24,16 @@
     from `chargebee:openfeature:v1` to `chargebee:entitlements:v1`; pass
     `cacheNamespace` explicitly if you need to keep reading previously cached
     keys.
-- Replaced the tiered cache with a `cache` slot in front of a durable `store`
+- Both providers resolve all four flag types through the single
+  `getValue(featureId, defaultValue, target)` method on the underlying client,
+  since the default value's runtime type already determines how the entitlement
+  is parsed. The `resolve*Evaluation` methods no longer take OpenFeature's
+  per-call `logger`; pass a `logger` to `ChargebeeEntitlements` instead.
+- The server provider reads `customerId` or `subscriptionId` off the
+  evaluation context, replacing the removed `chargebeeCustomerId` /
+  `chargebeeSubscriptionId` / `chargebeeEvaluationMode` keys. A context with
+  both identifiers, or neither, resolves to `INVALID_CONTEXT`.
+- Replaced the tiered cache with a `cache` slot in front of a `durableStore`
   slot on the server provider; both accept any `EntitlementsCache`.
 - Added `refreshOnMiss: "background"` so a missing snapshot resolves to caller
   defaults with reason `STALE` while it loads, plus `onSnapshotRefreshed` and
@@ -37,8 +46,7 @@
   default) so cache expiry can be configured where the cache is created;
   `cacheTtlMs` on the provider now overrides it per write when set.
 - `refreshSnapshot` evicts the cached snapshot before fetching from Chargebee,
-  and the new `evictCachedSnapshot` drops the cached copy without fetching, so
-  a webhook-driven refresh cannot be shadowed by stale cached values.
+  so a webhook-driven refresh cannot be shadowed by stale cached values.
 - Explicit primes now supersede request refreshes already in flight instead of
   reusing a fetch that may have started before the webhook change.
 - Renamed the `EntitlementsCache` interface to `EntitlementsStorage` since the
@@ -62,11 +70,12 @@
   implement `EntitlementsStorage` directly.
 - `@chargebee/openfeature/server` and `@chargebee/openfeature/web` no longer
   re-export shared domain types (`ChargebeeTarget`, `ChargebeeEntitlement`,
-  `ChargebeeEntitlementsSnapshot`, `ChargebeeEvaluationMode`,
-  `CHARGEBEE_CONTEXT_KEYS`, etc.). Import these from the root
+  `EntitlementResolution`, etc.). Import these from the root
   `@chargebee/openfeature` package, which has no peer-dependency
   requirements. This removes three independently drifting copies of the same
-  export list in favor of one canonical source.
+  export list in favor of one canonical source. The root entry point no longer
+  re-exports snapshot helpers or context utilities either; import those from
+  `@chargebee/entitlements/server` and `@chargebee/entitlements/cache`.
 - `@chargebee/openfeature/nextjs` no longer re-exports `ChargebeeEntitlementsProvider`
   / `ChargebeeEntitlementsProviderOptions`; import those from
   `@chargebee/openfeature/server`, where the provider is actually constructed.

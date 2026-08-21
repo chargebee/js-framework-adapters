@@ -20,7 +20,6 @@ function makeRedisClient(values = new Map<string, string>()) {
 
 function makeSnapshot(ttlMs = 60_000) {
 	return createEntitlementsSnapshot(
-		"customer",
 		[{ featureId: "sso", value: "true", isEnabled: true }],
 		ttlMs,
 	);

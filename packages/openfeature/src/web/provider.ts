@@ -1,4 +1,3 @@
-import { toResolutionDetails } from "@chargebee/entitlements";
 import {
 	ChargebeeEntitlementsWebClient,
 	type ChargebeeEntitlementsWebClientOptions,
@@ -7,12 +6,12 @@ import {
 	type ErrorCode,
 	type EvaluationContext,
 	type JsonValue,
-	type Logger,
 	OpenFeatureEventEmitter,
 	type Provider,
 	ProviderEvents,
 	type ResolutionDetails,
 } from "@openfeature/web-sdk";
+import { toResolutionDetails } from "../resolution";
 
 export type ChargebeeEntitlementsWebProviderOptions = Omit<
 	ChargebeeEntitlementsWebClientOptions,
@@ -69,44 +68,39 @@ export class ChargebeeEntitlementsWebProvider implements Provider {
 	resolveBooleanEvaluation(
 		flagKey: string,
 		defaultValue: boolean,
-		_context: EvaluationContext,
-		_logger: Logger,
 	): ResolutionDetails<boolean> {
-		return toResolutionDetails<boolean, ErrorCode>(
-			this.client.getBooleanValue(flagKey, defaultValue),
-		);
+		return this.resolve(flagKey, defaultValue);
 	}
 
 	resolveStringEvaluation(
 		flagKey: string,
 		defaultValue: string,
-		_context: EvaluationContext,
-		_logger: Logger,
 	): ResolutionDetails<string> {
-		return toResolutionDetails<string, ErrorCode>(
-			this.client.getStringValue(flagKey, defaultValue),
-		);
+		return this.resolve(flagKey, defaultValue);
 	}
 
 	resolveNumberEvaluation(
 		flagKey: string,
 		defaultValue: number,
-		_context: EvaluationContext,
-		_logger: Logger,
 	): ResolutionDetails<number> {
-		return toResolutionDetails<number, ErrorCode>(
-			this.client.getNumberValue(flagKey, defaultValue),
-		);
+		return this.resolve(flagKey, defaultValue);
 	}
 
 	resolveObjectEvaluation<T extends JsonValue>(
 		flagKey: string,
 		defaultValue: T,
-		_context: EvaluationContext,
-		_logger: Logger,
 	): ResolutionDetails<T> {
+		return this.resolve(flagKey, defaultValue);
+	}
+
+	/**
+	 * One evaluation path for all four flag types: the default value's runtime
+	 * type already tells `getValue` which shape to parse the entitlement into.
+	 * The relay snapshot is scoped to the session, so the context is unused.
+	 */
+	private resolve<T>(flagKey: string, defaultValue: T): ResolutionDetails<T> {
 		return toResolutionDetails<T, ErrorCode>(
-			this.client.getObjectValue(flagKey, defaultValue),
+			this.client.getValue(flagKey, defaultValue),
 		);
 	}
 }

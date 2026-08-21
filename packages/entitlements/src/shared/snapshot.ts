@@ -1,34 +1,62 @@
-import { z } from "zod";
 import type {
 	ChargebeeEntitlement,
 	ChargebeeEntitlementsSnapshot,
-	ChargebeeEvaluationMode,
 } from "./types";
 
-const entitlementSchema = z.object({
-	featureId: z.string().min(1),
-	value: z.string().optional(),
-	name: z.string().optional(),
-	featureName: z.string().optional(),
-	featureUnit: z.string().optional(),
-	featureType: z.string().optional(),
-	isEnabled: z.boolean(),
-	isOverridden: z.boolean().optional(),
-	expiresAt: z.number().int().optional(),
-});
+function isObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
-const snapshotSchema = z.object({
-	schemaVersion: z.literal(1),
-	generatedAt: z.iso.datetime(),
-	expiresAt: z.iso.datetime(),
-	targetMode: z.enum(["customer", "subscription"]),
-	entitlements: z.record(z.string(), entitlementSchema),
-});
+function isValidIsoDate(value: unknown): value is string {
+	return typeof value === "string" && !Number.isNaN(Date.parse(value));
+}
+
+function validateEntitlement(
+	key: string,
+	value: unknown,
+): ChargebeeEntitlement {
+	if (!isObject(value)) {
+		throw new Error(`Invalid entitlement for feature "${key}"`);
+	}
+	const { featureId, isEnabled } = value;
+	if (typeof featureId !== "string" || featureId.length === 0) {
+		throw new Error(`Invalid or missing featureId in entitlement for "${key}"`);
+	}
+	if (typeof isEnabled !== "boolean") {
+		throw new Error(`Invalid or missing isEnabled in entitlement for "${key}"`);
+	}
+	return value as unknown as ChargebeeEntitlement;
+}
 
 export function parseEntitlementsSnapshot(
 	input: unknown,
 ): ChargebeeEntitlementsSnapshot {
-	return snapshotSchema.parse(input);
+	if (!isObject(input)) {
+		throw new Error("Invalid entitlements snapshot: expected an object");
+	}
+
+	const { schemaVersion, generatedAt, expiresAt, entitlements } = input;
+
+	if (schemaVersion !== 1) {
+		throw new Error(
+			`Unsupported snapshot schemaVersion: ${String(schemaVersion)}`,
+		);
+	}
+	if (!isValidIsoDate(generatedAt)) {
+		throw new Error("Invalid snapshot generatedAt timestamp");
+	}
+	if (!isValidIsoDate(expiresAt)) {
+		throw new Error("Invalid snapshot expiresAt timestamp");
+	}
+	if (!isObject(entitlements)) {
+		throw new Error("Invalid snapshot entitlements map");
+	}
+
+	for (const [key, ent] of Object.entries(entitlements)) {
+		validateEntitlement(key, ent);
+	}
+
+	return input as unknown as ChargebeeEntitlementsSnapshot;
 }
 
 export function serializeEntitlementsSnapshot(
@@ -44,7 +72,6 @@ export function parseSerializedEntitlementsSnapshot(
 }
 
 export function createEntitlementsSnapshot(
-	targetMode: ChargebeeEvaluationMode,
 	entitlements: Iterable<ChargebeeEntitlement>,
 	ttlMs: number,
 	now = Date.now(),
@@ -53,7 +80,6 @@ export function createEntitlementsSnapshot(
 		schemaVersion: 1,
 		generatedAt: new Date(now).toISOString(),
 		expiresAt: new Date(now + ttlMs).toISOString(),
-		targetMode,
 		entitlements: Object.fromEntries(
 			[...entitlements].map((entitlement) => [
 				entitlement.featureId,

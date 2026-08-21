@@ -1,4 +1,4 @@
-import { toResolutionDetails } from "@chargebee/entitlements";
+import type { ChargebeeTarget } from "@chargebee/entitlements";
 import {
 	ChargebeeEntitlements,
 	type ChargebeeEntitlementsOptions,
@@ -7,14 +7,26 @@ import type {
 	ErrorCode,
 	EvaluationContext,
 	JsonValue,
-	Logger,
 	Provider,
 	ResolutionDetails,
 } from "@openfeature/server-sdk";
+import { toResolutionDetails } from "../resolution";
 
 export type ChargebeeEntitlementsProviderOptions =
 	| ChargebeeEntitlementsOptions
 	| { entitlements: ChargebeeEntitlements };
+
+/**
+ * An OpenFeature evaluation context is an untyped bag, so the Chargebee
+ * identifiers are picked out of it here. `ChargebeeEntitlements` validates
+ * what comes back and reports a missing or ambiguous target as
+ * `INVALID_CONTEXT`.
+ */
+const targetFrom = (context: EvaluationContext): ChargebeeTarget =>
+	({
+		customerId: context.customerId,
+		subscriptionId: context.subscriptionId,
+	}) as unknown as ChargebeeTarget;
 
 /**
  * Adapts `@chargebee/entitlements`'s framework-agnostic `ChargebeeEntitlements`
@@ -43,66 +55,52 @@ export class ChargebeeEntitlementsProvider implements Provider {
 		return this.entitlements.close();
 	}
 
-	async resolveBooleanEvaluation(
+	resolveBooleanEvaluation(
 		flagKey: string,
 		defaultValue: boolean,
 		context: EvaluationContext,
-		logger: Logger,
 	): Promise<ResolutionDetails<boolean>> {
-		return toResolutionDetails<boolean, ErrorCode>(
-			await this.entitlements.getBooleanValue(
-				flagKey,
-				defaultValue,
-				context,
-				logger,
-			),
-		);
+		return this.resolve(flagKey, defaultValue, context);
 	}
 
-	async resolveStringEvaluation(
+	resolveStringEvaluation(
 		flagKey: string,
 		defaultValue: string,
 		context: EvaluationContext,
-		logger: Logger,
 	): Promise<ResolutionDetails<string>> {
-		return toResolutionDetails<string, ErrorCode>(
-			await this.entitlements.getStringValue(
-				flagKey,
-				defaultValue,
-				context,
-				logger,
-			),
-		);
+		return this.resolve(flagKey, defaultValue, context);
 	}
 
-	async resolveNumberEvaluation(
+	resolveNumberEvaluation(
 		flagKey: string,
 		defaultValue: number,
 		context: EvaluationContext,
-		logger: Logger,
 	): Promise<ResolutionDetails<number>> {
-		return toResolutionDetails<number, ErrorCode>(
-			await this.entitlements.getNumberValue(
-				flagKey,
-				defaultValue,
-				context,
-				logger,
-			),
-		);
+		return this.resolve(flagKey, defaultValue, context);
 	}
 
-	async resolveObjectEvaluation<T extends JsonValue>(
+	resolveObjectEvaluation<T extends JsonValue>(
 		flagKey: string,
 		defaultValue: T,
 		context: EvaluationContext,
-		logger: Logger,
+	): Promise<ResolutionDetails<T>> {
+		return this.resolve(flagKey, defaultValue, context);
+	}
+
+	/**
+	 * One evaluation path for all four flag types: the default value's runtime
+	 * type already tells `getValue` which shape to parse the entitlement into.
+	 */
+	private async resolve<T>(
+		flagKey: string,
+		defaultValue: T,
+		context: EvaluationContext,
 	): Promise<ResolutionDetails<T>> {
 		return toResolutionDetails<T, ErrorCode>(
-			await this.entitlements.getObjectValue(
+			await this.entitlements.getValue(
 				flagKey,
 				defaultValue,
-				context,
-				logger,
+				targetFrom(context),
 			),
 		);
 	}

@@ -4,8 +4,7 @@ import type { NextRequest } from "next/server";
 import {
 	type CreateEntitlementsRelayHandlerOptions,
 	createEntitlementsRelayHandler as createRelayHandler,
-	type EntitlementsRelayHandler,
-} from "./server";
+} from "./server/relay";
 
 /**
  * Builds an App Router `GET` handler that resolves billing identity on the
@@ -15,8 +14,8 @@ import {
  */
 export function createEntitlementsRelayHandler(
 	options: CreateEntitlementsRelayHandlerOptions<NextRequest>,
-): EntitlementsRelayHandler<NextRequest> {
+): (request: NextRequest) => Promise<Response> {
 	return createRelayHandler<NextRequest>(options);
 }
 
-export type { CreateEntitlementsRelayHandlerOptions, EntitlementsRelayHandler };
+export type { CreateEntitlementsRelayHandlerOptions };

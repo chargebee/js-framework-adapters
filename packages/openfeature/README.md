@@ -44,8 +44,9 @@ export const entitlementsProvider = new ChargebeeEntitlementsProvider({
 await OpenFeature.setProviderAndWait(entitlementsProvider);
 ```
 
-Evaluate Chargebee feature IDs as OpenFeature flag keys. `targetingKey` remains
-the application's subject ID and is never assumed to be a Chargebee ID.
+Evaluate Chargebee feature IDs as OpenFeature flag keys. The provider reads
+`customerId` or `subscriptionId` off the evaluation context; `targetingKey`
+remains the application's subject ID and is never assumed to be a Chargebee ID.
 
 ```ts
 const enabled = await OpenFeature.getClient().getBooleanValue(
@@ -53,10 +54,13 @@ const enabled = await OpenFeature.getClient().getBooleanValue(
   false,
   {
     targetingKey: session.user.id,
-    chargebeeCustomerId: session.user.chargebeeCustomerId,
+    customerId: session.user.chargebeeCustomerId,
   },
 );
 ```
+
+A context carrying both `customerId` and `subscriptionId`, or neither,
+resolves to the caller's default with `INVALID_CONTEXT`.
 
 ### Sharing a `ChargebeeEntitlements` instance
 
@@ -74,7 +78,7 @@ import { ChargebeeEntitlementsProvider } from "@chargebee/openfeature/server";
 export const entitlements = new ChargebeeEntitlements({
   chargebeeClient: chargebee,
   cache,
-  store: postgresSnapshotStore,
+  durableStore: postgresSnapshotStore,
 });
 
 export const entitlementsProvider = new ChargebeeEntitlementsProvider({

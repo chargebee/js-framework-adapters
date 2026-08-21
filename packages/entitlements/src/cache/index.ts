@@ -1,3 +1,8 @@
+export type { ChargebeeEntitlementsSnapshot } from "../shared";
+export {
+	parseSerializedEntitlementsSnapshot,
+	serializeEntitlementsSnapshot,
+} from "../shared";
 export { createEntitlementsCacheKey } from "./key";
 export {
 	createMemoryEntitlementsCache,

@@ -1,21 +1,15 @@
 import { createEntitlementsCacheKey, type EntitlementsStorage } from "../cache";
 import {
+	assertTarget,
 	type ChargebeeEntitlementsSnapshot,
-	type ChargebeeEvaluationMode,
 	type ChargebeeTarget,
 	createEntitlementsSnapshot,
 	type EntitlementResolution,
-	type EvaluationContextLike,
 	errorResolution,
 	Feature,
-	type FeatureDefinition,
-	getTargetFromContext,
 	isSnapshotExpired,
 	type Logger,
-	resolveBooleanEntitlement,
-	resolveNumberEntitlement,
-	resolveObjectEntitlement,
-	resolveStringEntitlement,
+	resolveEntitlement,
 	type SnapshotSource,
 } from "../shared";
 import {
@@ -23,14 +17,7 @@ import {
 	ChargebeeEntitlementsLoader,
 } from "./loader";
 
-/**
- * What happens when neither the cache nor the store holds a snapshot.
- * `blocking` waits for Chargebee; `background` starts the refresh and reports
- * the snapshot as pending so the caller can fall back to its own defaults.
- */
-export type RefreshOnMiss = "blocking" | "background";
-
-export type SnapshotOperation =
+type SnapshotOperation =
 	| "cache-read"
 	| "cache-write"
 	| "cache-delete"
@@ -53,24 +40,32 @@ export interface SnapshotRefreshedEvent {
 
 export interface ChargebeeEntitlementsOptions {
 	chargebeeClient: ChargebeeEntitlementsClient;
-	defaultMode?: ChargebeeEvaluationMode;
-	consolidateCustomerEntitlements?: boolean;
-	resolveTarget?: (context: EvaluationContextLike) => ChargebeeTarget;
-	/** Fast shared cache (Redis or similar) read before the store. */
+	/** Fast shared cache (Redis or similar) read before the durable store. */
 	cache?: EntitlementsStorage;
 	/** Cache expiry. Defaults to whatever the cache implementation applies. */
 	cacheTtlMs?: number;
 	/** Durable snapshot store treated as the source of truth. */
-	store?: EntitlementsStorage;
-	cacheNamespace?: string;
+	durableStore?: EntitlementsStorage;
+	/** How long a snapshot is valid before it is considered expired. Defaults to 300 000 ms. */
 	snapshotTtlMs?: number;
-	refreshOnMiss?: RefreshOnMiss;
-	/** Minimum gap between background refresh attempts after a failure. */
-	refreshBackoffMs?: number;
+	/**
+	 * What happens when neither the cache nor the store holds a snapshot.
+	 * `blocking` waits for Chargebee; `background` starts the refresh and
+	 * reports the snapshot as pending so callers fall back to their defaults.
+	 */
+	refreshOnMiss?: "blocking" | "background";
+	logger?: Logger;
 	onSnapshotRefreshed?: (event: SnapshotRefreshedEvent) => void;
 	onError?: (error: unknown, info: SnapshotErrorInfo) => void;
-	pageSize?: number;
-	maxPages?: number;
+	/** Rarely-needed options. */
+	advanced?: {
+		cacheNamespace?: string;
+		consolidateCustomerEntitlements?: boolean;
+		/** Minimum gap between background refresh attempts after a failure. */
+		refreshBackoffMs?: number;
+		pageSize?: number;
+		maxPages?: number;
+	};
 }
 
 export interface EntitlementsSnapshotResult {
@@ -92,18 +87,6 @@ export class SnapshotPendingError extends Error {
 	}
 }
 
-function isChargebeeTarget(
-	target: ChargebeeTarget | EvaluationContextLike,
-): target is ChargebeeTarget {
-	const candidate = target as Partial<ChargebeeTarget>;
-	return candidate.mode === "customer"
-		? typeof (candidate as { customerId?: unknown }).customerId === "string"
-		: candidate.mode === "subscription"
-			? typeof (candidate as { subscriptionId?: unknown }).subscriptionId ===
-				"string"
-			: false;
-}
-
 /**
  * Framework-agnostic Chargebee entitlements client. Resolves a snapshot from
  * a shared cache, a durable store, or the Chargebee API, and evaluates
@@ -111,17 +94,13 @@ function isChargebeeTarget(
  * as `@chargebee/openfeature`'s `ChargebeeEntitlementsProvider`.
  */
 export class ChargebeeEntitlements {
-	private readonly defaultMode: ChargebeeEvaluationMode;
 	private readonly consolidateCustomerEntitlements: boolean;
-	private readonly resolveTargetOption?: (
-		context: EvaluationContextLike,
-	) => ChargebeeTarget;
 	private readonly cache?: EntitlementsStorage;
 	private readonly cacheTtlMs?: number;
-	private readonly store?: EntitlementsStorage;
+	private readonly durableStore?: EntitlementsStorage;
 	private readonly cacheNamespace?: string;
 	private readonly snapshotTtlMs: number;
-	private readonly refreshOnMiss: RefreshOnMiss;
+	private readonly refreshOnMiss: "blocking" | "background";
 	private readonly refreshBackoffMs: number;
 	private readonly onSnapshotRefreshed?: (
 		event: SnapshotRefreshedEvent,
@@ -138,17 +117,15 @@ export class ChargebeeEntitlements {
 		if (!options?.chargebeeClient)
 			throw new Error("chargebeeClient is required");
 
-		this.defaultMode = options.defaultMode ?? "customer";
 		this.consolidateCustomerEntitlements =
-			options.consolidateCustomerEntitlements ?? true;
-		this.resolveTargetOption = options.resolveTarget;
+			options.advanced?.consolidateCustomerEntitlements ?? true;
 		this.cache = options.cache;
 		this.cacheTtlMs = options.cacheTtlMs;
-		this.store = options.store;
-		this.cacheNamespace = options.cacheNamespace;
+		this.durableStore = options.durableStore;
+		this.cacheNamespace = options.advanced?.cacheNamespace;
 		this.snapshotTtlMs = options.snapshotTtlMs ?? 300_000;
 		this.refreshOnMiss = options.refreshOnMiss ?? "blocking";
-		this.refreshBackoffMs = options.refreshBackoffMs ?? 10_000;
+		this.refreshBackoffMs = options.advanced?.refreshBackoffMs ?? 10_000;
 		this.onSnapshotRefreshed = options.onSnapshotRefreshed;
 		this.onError = options.onError;
 		for (const [name, value] of [
@@ -162,8 +139,9 @@ export class ChargebeeEntitlements {
 		this.loader = new ChargebeeEntitlementsLoader({
 			chargebeeClient: options.chargebeeClient,
 			consolidateCustomerEntitlements: this.consolidateCustomerEntitlements,
-			pageSize: options.pageSize ?? 100,
-			maxPages: options.maxPages ?? 50,
+			pageSize: options.advanced?.pageSize ?? 100,
+			maxPages: options.advanced?.maxPages ?? 50,
+			logger: options.logger,
 		});
 	}
 
@@ -173,64 +151,19 @@ export class ChargebeeEntitlements {
 		this.failedAt.clear();
 	}
 
-	getBooleanValue(
-		flagKey: string,
-		defaultValue: boolean,
-		target: ChargebeeTarget | EvaluationContextLike,
-		logger?: Logger,
-	): Promise<EntitlementResolution<boolean>> {
-		return this.evaluate(defaultValue, target, logger, (result) =>
-			resolveBooleanEntitlement(
-				result.snapshot,
-				flagKey,
-				defaultValue,
-				result.source,
-			),
-		);
-	}
-
-	getStringValue(
-		flagKey: string,
-		defaultValue: string,
-		target: ChargebeeTarget | EvaluationContextLike,
-		logger?: Logger,
-	): Promise<EntitlementResolution<string>> {
-		return this.evaluate(defaultValue, target, logger, (result) =>
-			resolveStringEntitlement(
-				result.snapshot,
-				flagKey,
-				defaultValue,
-				result.source,
-			),
-		);
-	}
-
-	getNumberValue(
-		flagKey: string,
-		defaultValue: number,
-		target: ChargebeeTarget | EvaluationContextLike,
-		logger?: Logger,
-	): Promise<EntitlementResolution<number>> {
-		return this.evaluate(defaultValue, target, logger, (result) =>
-			resolveNumberEntitlement(
-				result.snapshot,
-				flagKey,
-				defaultValue,
-				result.source,
-			),
-		);
-	}
-
-	getObjectValue<T>(
-		flagKey: string,
+	/**
+	 * Resolves a feature into whatever shape `defaultValue` declares, and falls
+	 * back to that default when Chargebee has no usable value.
+	 */
+	getValue<T>(
+		featureId: string,
 		defaultValue: T,
-		target: ChargebeeTarget | EvaluationContextLike,
-		logger?: Logger,
+		target: ChargebeeTarget,
 	): Promise<EntitlementResolution<T>> {
-		return this.evaluate(defaultValue, target, logger, (result) =>
-			resolveObjectEntitlement(
+		return this.evaluate(defaultValue, target, (result) =>
+			resolveEntitlement(
 				result.snapshot,
-				flagKey,
+				featureId,
 				defaultValue,
 				result.source,
 			),
@@ -242,16 +175,13 @@ export class ChargebeeEntitlements {
 	 * single concise call:
 	 *
 	 * ```ts
-	 * const seats = entitlements.feature("licensed-seats", {
-	 *   type: "number",
-	 *   defaultValue: 0,
-	 * });
+	 * const seats = entitlements.feature("licensed-seats", 0);
 	 *
-	 * const value = await seats.get({ mode: "customer", customerId });
+	 * const count = await seats.get({ customerId });
 	 * ```
 	 */
-	feature<T>(featureId: string, definition: FeatureDefinition<T>): Feature<T> {
-		return new Feature(featureId, { ...definition, client: this });
+	feature<T>(featureId: string, defaultValue: T): Feature<T> {
+		return new Feature(featureId, defaultValue, this);
 	}
 
 	/**
@@ -260,37 +190,36 @@ export class ChargebeeEntitlements {
 	 * `refreshOnMiss` is `background`.
 	 */
 	async getSnapshot(
-		target: ChargebeeTarget | EvaluationContextLike,
-		logger?: Logger,
+		target: ChargebeeTarget,
 	): Promise<EntitlementsSnapshotResult> {
 		const resolved = this.resolveTarget(target);
 		const key = this.cacheKey(resolved);
 
 		const cached = await this.read(this.cache, key, resolved, "cache-read");
 		if (cached) {
-			this.refreshIfExpired(cached, resolved, key, logger);
+			this.refreshIfExpired(cached, resolved, key);
 			return { snapshot: cached, source: "cache" };
 		}
 
-		const stored = await this.read(this.store, key, resolved, "store-read");
+		const stored = await this.read(
+			this.durableStore,
+			key,
+			resolved,
+			"store-read",
+		);
 		if (stored) {
 			await this.write(this.cache, key, stored, resolved, "cache-write");
-			this.refreshIfExpired(stored, resolved, key, logger);
+			this.refreshIfExpired(stored, resolved, key);
 			return { snapshot: stored, source: "store" };
 		}
 
 		if (this.refreshOnMiss === "background") {
-			this.scheduleRefresh(resolved, key, logger);
+			this.scheduleRefresh(resolved, key);
 			throw new SnapshotPendingError(resolved);
 		}
 
 		return {
-			snapshot: await this.fetchAndPersistSnapshot(
-				resolved,
-				key,
-				"request",
-				logger,
-			),
+			snapshot: await this.fetchAndPersistSnapshot(resolved, key, "request"),
 			source: "api",
 		};
 	}
@@ -305,23 +234,18 @@ export class ChargebeeEntitlements {
 	 */
 	async refreshSnapshot(
 		target: ChargebeeTarget,
-		logger?: Logger,
 	): Promise<EntitlementsSnapshotResult> {
-		const key = this.cacheKey(target);
+		const resolved = this.resolveTarget(target);
+		const key = this.cacheKey(resolved);
 		// An explicit refresh represents a known upstream change (typically a
 		// webhook). It must not join a request refresh that may have started
 		// before that change. Cancel both before and after the async eviction so
 		// no refresh started during that gap can be reused either.
 		this.cancelInFlight(key);
-		await this.evictCache(key, target);
+		await this.evictCache(key, resolved);
 		this.cancelInFlight(key);
 		return {
-			snapshot: await this.fetchAndPersistSnapshot(
-				target,
-				key,
-				"explicit",
-				logger,
-			),
+			snapshot: await this.fetchAndPersistSnapshot(resolved, key, "explicit"),
 			source: "api",
 		};
 	}
@@ -331,35 +255,26 @@ export class ChargebeeEntitlements {
 		target: ChargebeeTarget,
 		snapshot: ChargebeeEntitlementsSnapshot,
 	): Promise<void> {
-		if (snapshot.targetMode !== target.mode) {
-			throw new Error(
-				`Snapshot target mode ${snapshot.targetMode} does not match ${target.mode}`,
-			);
-		}
-		const key = this.cacheKey(target);
+		const resolved = this.resolveTarget(target);
+		const key = this.cacheKey(resolved);
 		this.cancelInFlight(key);
-		await this.persist(key, snapshot, target);
+		await this.persist(key, snapshot, resolved);
 	}
 
-	/** Removes the snapshot from both the cache and the store. */
+	/** Removes the snapshot from both the cache and the durable store. */
 	async deleteSnapshot(target: ChargebeeTarget): Promise<void> {
-		const key = this.cacheKey(target);
+		const resolved = this.resolveTarget(target);
+		const key = this.cacheKey(resolved);
 		this.cancelInFlight(key);
-		await this.evictCache(key, target);
-		await this.store?.delete(key);
-	}
-
-	/** Drops the cached copy, leaving the store as the next read's source. */
-	async evictCachedSnapshot(target: ChargebeeTarget): Promise<void> {
-		await this.evictCache(this.cacheKey(target), target);
+		await this.evictCache(key, resolved);
+		await this.durableStore?.delete(key);
 	}
 
 	async getRelaySnapshot(
-		target: ChargebeeTarget | EvaluationContextLike,
+		target: ChargebeeTarget,
 		ttlMs = 60_000,
-		logger?: Logger,
 	): Promise<ChargebeeEntitlementsSnapshot> {
-		const { snapshot } = await this.getSnapshot(target, logger);
+		const { snapshot } = await this.getSnapshot(target);
 		return {
 			...snapshot,
 			expiresAt: new Date(
@@ -370,12 +285,11 @@ export class ChargebeeEntitlements {
 
 	private async evaluate<T>(
 		defaultValue: T,
-		target: ChargebeeTarget | EvaluationContextLike,
-		logger: Logger | undefined,
+		target: ChargebeeTarget,
 		resolve: (result: EntitlementsSnapshotResult) => EntitlementResolution<T>,
 	): Promise<EntitlementResolution<T>> {
 		try {
-			return resolve(await this.getSnapshot(target, logger));
+			return resolve(await this.getSnapshot(target));
 		} catch (error) {
 			if (error instanceof SnapshotPendingError) {
 				return {
@@ -396,20 +310,28 @@ export class ChargebeeEntitlements {
 		}
 	}
 
-	private async read(
+	private safeStorageOp<T>(
+		storage: EntitlementsStorage | undefined,
+		operation: SnapshotOperation,
+		target: ChargebeeTarget,
+		action: (store: EntitlementsStorage) => Promise<T>,
+	): Promise<T | undefined> {
+		if (!storage) return Promise.resolve(undefined);
+		return action(storage).catch((error) => {
+			this.onError?.(error, { operation, target });
+			return undefined;
+		});
+	}
+
+	private read(
 		storage: EntitlementsStorage | undefined,
 		key: string,
 		target: ChargebeeTarget,
 		operation: Extract<SnapshotOperation, "cache-read" | "store-read">,
 	): Promise<ChargebeeEntitlementsSnapshot | undefined> {
-		if (!storage) return undefined;
-		try {
-			return await storage.get(key);
-		} catch (error) {
-			// A storage outage degrades to the next link in the chain.
-			this.onError?.(error, { operation, target });
-			return undefined;
-		}
+		return this.safeStorageOp(storage, operation, target, (store) =>
+			store.get(key),
+		);
 	}
 
 	private async write(
@@ -419,28 +341,22 @@ export class ChargebeeEntitlements {
 		target: ChargebeeTarget,
 		operation: Extract<SnapshotOperation, "cache-write" | "store-write">,
 	): Promise<void> {
-		if (!storage) return;
-		try {
-			await storage.set(
+		await this.safeStorageOp(storage, operation, target, (store) =>
+			store.set(
 				key,
 				snapshot,
 				operation === "cache-write" ? this.cacheTtlMs : this.snapshotTtlMs,
-			);
-		} catch (error) {
-			this.onError?.(error, { operation, target });
-		}
+			),
+		);
 	}
 
 	private async evictCache(
 		key: string,
 		target: ChargebeeTarget,
 	): Promise<void> {
-		if (!this.cache) return;
-		try {
-			await this.cache.delete(key);
-		} catch (error) {
-			this.onError?.(error, { operation: "cache-delete", target });
-		}
+		await this.safeStorageOp(this.cache, "cache-delete", target, (store) =>
+			store.delete(key),
+		);
 	}
 
 	/**
@@ -451,32 +367,24 @@ export class ChargebeeEntitlements {
 		snapshot: ChargebeeEntitlementsSnapshot,
 		target: ChargebeeTarget,
 		key: string,
-		logger?: Logger,
 	): void {
-		if (isSnapshotExpired(snapshot)) this.scheduleRefresh(target, key, logger);
+		if (isSnapshotExpired(snapshot)) this.scheduleRefresh(target, key);
 	}
 
-	private scheduleRefresh(
-		target: ChargebeeTarget,
-		key: string,
-		logger?: Logger,
-	): void {
+	private scheduleRefresh(target: ChargebeeTarget, key: string): void {
 		const failedAt = this.failedAt.get(key);
 		if (failedAt !== undefined && Date.now() - failedAt < this.refreshBackoffMs)
 			return;
 
-		void this.fetchAndPersistSnapshot(target, key, "request", logger).catch(
-			() => {
-				// Reported through onError inside fetchAndPersistSnapshot.
-			},
-		);
+		void this.fetchAndPersistSnapshot(target, key, "request").catch(() => {
+			// Reported through onError inside fetchAndPersistSnapshot.
+		});
 	}
 
 	private fetchAndPersistSnapshot(
 		target: ChargebeeTarget,
 		key: string,
 		trigger: SnapshotRefreshedEvent["trigger"],
-		logger?: Logger,
 	): Promise<ChargebeeEntitlementsSnapshot> {
 		const current = this.inFlight.get(key);
 		if (current) return current.promise;
@@ -486,8 +394,7 @@ export class ChargebeeEntitlements {
 			promise: Promise.resolve().then(async () => {
 				try {
 					const snapshot = createEntitlementsSnapshot(
-						target.mode,
-						await this.loader.load(target, logger),
+						await this.loader.load(target),
 						this.snapshotTtlMs,
 					);
 					if (!request.cancelled) {
@@ -509,13 +416,14 @@ export class ChargebeeEntitlements {
 		return request.promise;
 	}
 
-	/** The store is the source of truth, so its write failures propagate. */
+	/** The durable store is the source of truth, so its write failures propagate. */
 	private async persist(
 		key: string,
 		snapshot: ChargebeeEntitlementsSnapshot,
 		target: ChargebeeTarget,
 	): Promise<void> {
-		if (this.store) await this.store.set(key, snapshot, this.snapshotTtlMs);
+		if (this.durableStore)
+			await this.durableStore.set(key, snapshot, this.snapshotTtlMs);
 		await this.write(this.cache, key, snapshot, target, "cache-write");
 	}
 
@@ -525,17 +433,12 @@ export class ChargebeeEntitlements {
 		this.inFlight.delete(key);
 	}
 
-	private resolveTarget(
-		target: ChargebeeTarget | EvaluationContextLike,
-	): ChargebeeTarget {
-		if (isChargebeeTarget(target)) return target;
+	private resolveTarget(target: ChargebeeTarget): ChargebeeTarget {
 		try {
-			return this.resolveTargetOption
-				? this.resolveTargetOption(target)
-				: getTargetFromContext(target, this.defaultMode);
+			return assertTarget(target);
 		} catch (error) {
 			throw new InvalidEntitlementContextError(
-				error instanceof Error ? error.message : "Invalid evaluation context",
+				error instanceof Error ? error.message : "Invalid Chargebee target",
 			);
 		}
 	}

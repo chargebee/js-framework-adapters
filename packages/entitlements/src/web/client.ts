@@ -2,12 +2,10 @@ import {
 	type ChargebeeEntitlementsSnapshot,
 	type EntitlementResolution,
 	errorResolution,
+	Feature,
 	isSnapshotExpired,
 	parseEntitlementsSnapshot,
-	resolveBooleanEntitlement,
-	resolveNumberEntitlement,
-	resolveObjectEntitlement,
-	resolveStringEntitlement,
+	resolveEntitlement,
 } from "../shared";
 
 export interface ChargebeeEntitlementsWebClientOptions {
@@ -96,50 +94,24 @@ export class ChargebeeEntitlementsWebClient {
 		return this.loadSnapshot(true);
 	}
 
-	getBooleanValue(
-		flagKey: string,
-		defaultValue: boolean,
-	): EntitlementResolution<boolean> {
-		return this.evaluate(defaultValue, (snapshot) =>
-			resolveBooleanEntitlement(snapshot, flagKey, defaultValue, "relay"),
-		);
-	}
-
-	getStringValue(
-		flagKey: string,
-		defaultValue: string,
-	): EntitlementResolution<string> {
-		return this.evaluate(defaultValue, (snapshot) =>
-			resolveStringEntitlement(snapshot, flagKey, defaultValue, "relay"),
-		);
-	}
-
-	getNumberValue(
-		flagKey: string,
-		defaultValue: number,
-	): EntitlementResolution<number> {
-		return this.evaluate(defaultValue, (snapshot) =>
-			resolveNumberEntitlement(snapshot, flagKey, defaultValue, "relay"),
-		);
-	}
-
-	getObjectValue<T>(
-		flagKey: string,
-		defaultValue: T,
-	): EntitlementResolution<T> {
-		return this.evaluate(defaultValue, (snapshot) =>
-			resolveObjectEntitlement(snapshot, flagKey, defaultValue, "relay"),
-		);
-	}
-
-	private evaluate<T>(
-		defaultValue: T,
-		resolve: (
-			snapshot: ChargebeeEntitlementsSnapshot,
-		) => EntitlementResolution<T>,
-	): EntitlementResolution<T> {
+	/**
+	 * Resolves a feature into whatever shape `defaultValue` declares, against
+	 * the snapshot currently held in memory. The relay scopes that snapshot to
+	 * the authenticated session, so there is no target to pass.
+	 */
+	getValue<T>(featureId: string, defaultValue: T): EntitlementResolution<T> {
 		const snapshot = this.getUsableSnapshot(defaultValue);
-		return "entitlements" in snapshot ? resolve(snapshot) : snapshot;
+		return "entitlements" in snapshot
+			? resolveEntitlement(snapshot, featureId, defaultValue, "relay")
+			: snapshot;
+	}
+
+	/**
+	 * Declares a feature bound to this web client, evaluated synchronously
+	 * against the current relay snapshot.
+	 */
+	feature<T>(featureId: string, defaultValue: T): Feature<T> {
+		return new Feature(featureId, defaultValue, this);
 	}
 
 	private getUsableSnapshot<T>(

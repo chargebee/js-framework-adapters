@@ -1,6 +1,6 @@
 import {
 	ChargebeeEntitlements,
-	type ChargebeeEntitlementsClient,
+	type ChargebeeEntitlementsOptions,
 } from "@chargebee/entitlements/server";
 import { OpenFeature } from "@openfeature/server-sdk";
 import { ChargebeeEntitlementsProvider } from "../src/server";
@@ -25,13 +25,13 @@ function makeClient() {
 				list: [],
 			})),
 		},
-	} as unknown as ChargebeeEntitlementsClient;
+	} as unknown as ChargebeeEntitlementsOptions["chargebeeClient"];
 	return { client, customerRequest };
 }
 
 const context = {
 	targetingKey: "app-user-1",
-	chargebeeCustomerId: "customer-1",
+	customerId: "customer-1",
 };
 
 afterEach(async () => {
@@ -60,7 +60,7 @@ describe("ChargebeeEntitlementsProvider", () => {
 
 		expect(provider.entitlements).toBe(entitlements);
 		await expect(
-			provider.resolveBooleanEvaluation("sso", false, context, console),
+			provider.resolveBooleanEvaluation("sso", false, context),
 		).resolves.toMatchObject({ value: true, reason: "TARGETING_MATCH" });
 	});
 
@@ -83,18 +83,48 @@ describe("ChargebeeEntitlementsProvider", () => {
 				subscriptionEntitlement: {
 					subscriptionEntitlementsForSubscription: vi.fn(),
 				},
-			} as unknown as ChargebeeEntitlementsClient,
+			} as unknown as ChargebeeEntitlementsOptions["chargebeeClient"],
 		});
 
 		await expect(
-			provider.resolveNumberEvaluation("seats", 0, context, console),
+			provider.resolveNumberEvaluation("seats", 0, context),
 		).resolves.toMatchObject({ value: 10 });
 		await expect(
-			provider.resolveStringEvaluation("seats", "0", context, console),
+			provider.resolveStringEvaluation("seats", "0", context),
 		).resolves.toMatchObject({ value: "10" });
 		await expect(
-			provider.resolveObjectEvaluation("seats", {}, context, console),
+			provider.resolveObjectEvaluation("seats", {}, context),
 		).resolves.toMatchObject({ value: { featureId: "seats", value: "10" } });
+	});
+
+	it("resolves a subscription-scoped context", async () => {
+		const subscriptionRequest = vi.fn(async () => ({
+			list: [
+				{
+					subscription_entitlement: {
+						subscription_id: "subscription-1",
+						feature_id: "seats",
+						value: "50",
+						is_enabled: true,
+					},
+				},
+			],
+		}));
+		const provider = new ChargebeeEntitlementsProvider({
+			chargebeeClient: {
+				customerEntitlement: { entitlementsForCustomer: vi.fn() },
+				subscriptionEntitlement: {
+					subscriptionEntitlementsForSubscription: subscriptionRequest,
+				},
+			} as unknown as ChargebeeEntitlementsOptions["chargebeeClient"],
+		});
+
+		await expect(
+			provider.resolveNumberEvaluation("seats", 0, {
+				targetingKey: "app-user-1",
+				subscriptionId: "subscription-1",
+			}),
+		).resolves.toMatchObject({ value: 50 });
 	});
 
 	it("passes through STALE with snapshotPending metadata while a background refresh loads", async () => {
@@ -105,7 +135,7 @@ describe("ChargebeeEntitlementsProvider", () => {
 		});
 
 		await expect(
-			provider.resolveBooleanEvaluation("sso", false, context, console),
+			provider.resolveBooleanEvaluation("sso", false, context),
 		).resolves.toEqual({
 			value: false,
 			reason: "STALE",
@@ -120,12 +150,15 @@ describe("ChargebeeEntitlementsProvider", () => {
 		});
 
 		await expect(
-			provider.resolveBooleanEvaluation(
-				"sso",
-				false,
-				{ targetingKey: "app-user-1" },
-				console,
-			),
+			provider.resolveBooleanEvaluation("sso", false, {
+				targetingKey: "app-user-1",
+			}),
+		).resolves.toMatchObject({ value: false, errorCode: "INVALID_CONTEXT" });
+		await expect(
+			provider.resolveBooleanEvaluation("sso", false, {
+				customerId: "customer-1",
+				subscriptionId: "subscription-1",
+			}),
 		).resolves.toMatchObject({ value: false, errorCode: "INVALID_CONTEXT" });
 		expect(customerRequest).not.toHaveBeenCalled();
 	});

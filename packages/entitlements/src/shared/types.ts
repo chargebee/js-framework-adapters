@@ -1,18 +1,12 @@
-export const CHARGEBEE_CONTEXT_KEYS = {
-	customerId: "chargebeeCustomerId",
-	subscriptionId: "chargebeeSubscriptionId",
-	evaluationMode: "chargebeeEvaluationMode",
-} as const;
-
-export type ChargebeeEvaluationMode = "customer" | "subscription";
-
+/**
+ * Who an entitlement is evaluated for: a Chargebee customer, whose
+ * entitlements are consolidated across their subscriptions, or a single
+ * subscription. Exactly one identifier, so there is nothing to configure and
+ * no mode to reconcile.
+ */
 export type ChargebeeTarget =
-	| { mode: "customer"; customerId: string }
-	| { mode: "subscription"; subscriptionId: string };
-
-export type EvaluationContextLike = Record<string, unknown> & {
-	targetingKey?: string;
-};
+	| { customerId: string; subscriptionId?: never }
+	| { subscriptionId: string; customerId?: never };
 
 /**
  * A minimal, framework-agnostic logger. Structurally compatible with
@@ -41,7 +35,6 @@ export interface ChargebeeEntitlementsSnapshot {
 	schemaVersion: 1;
 	generatedAt: string;
 	expiresAt: string;
-	targetMode: ChargebeeEvaluationMode;
 	entitlements: Record<string, ChargebeeEntitlement>;
 }
 

@@ -17,12 +17,32 @@ interface EntitlementsLoaderOptions {
 	consolidateCustomerEntitlements: boolean;
 	pageSize: number;
 	maxPages: number;
+	logger?: Logger;
 }
+
+type RawEntitlement = Partial<CustomerEntitlement & SubscriptionEntitlement>;
 
 function withoutUndefined<T extends object>(value: T): T {
 	return Object.fromEntries(
 		Object.entries(value).filter(([, entry]) => entry !== undefined),
 	) as T;
+}
+
+function normalizeEntitlement(
+	entitlement: RawEntitlement,
+): ChargebeeEntitlement | undefined {
+	if (!entitlement.feature_id) return undefined;
+	return withoutUndefined({
+		featureId: entitlement.feature_id,
+		isEnabled: entitlement.is_enabled ?? false,
+		isOverridden: entitlement.is_overridden,
+		value: entitlement.value,
+		name: entitlement.name,
+		featureName: entitlement.feature_name,
+		featureUnit: entitlement.feature_unit,
+		featureType: entitlement.feature_type,
+		expiresAt: entitlement.expires_at,
+	});
 }
 
 export class ChargebeeEntitlementsLoader {
@@ -39,16 +59,29 @@ export class ChargebeeEntitlementsLoader {
 		}
 	}
 
-	load(
-		target: ChargebeeTarget,
-		logger?: Logger,
-	): Promise<ChargebeeEntitlement[]> {
-		return target.mode === "customer"
-			? this.loadCustomer(target.customerId, logger)
-			: this.loadSubscription(target.subscriptionId, logger);
-	}
+	load(target: ChargebeeTarget): Promise<ChargebeeEntitlement[]> {
+		const normalize = (item: {
+			customer_entitlement?: CustomerEntitlement;
+			subscription_entitlement?: SubscriptionEntitlement;
+		}) =>
+			normalizeEntitlement(
+				item.customer_entitlement ?? item.subscription_entitlement ?? {},
+			);
 
-	private loadCustomer(customerId: string, logger?: Logger) {
+		if (target.subscriptionId !== undefined) {
+			const { subscriptionId } = target;
+			return this.collect(
+				(offset) =>
+					this.options.chargebeeClient.subscriptionEntitlement.subscriptionEntitlementsForSubscription(
+						subscriptionId,
+						{ limit: this.options.pageSize, offset },
+					),
+				normalize,
+				"subscription",
+			);
+		}
+
+		const { customerId } = target;
 		return this.collect(
 			(offset) =>
 				this.options.chargebeeClient.customerEntitlement.entitlementsForCustomer(
@@ -60,32 +93,15 @@ export class ChargebeeEntitlementsLoader {
 							this.options.consolidateCustomerEntitlements,
 					},
 				),
-			(item: { customer_entitlement: CustomerEntitlement }) =>
-				this.normalizeCustomer(item.customer_entitlement),
+			normalize,
 			"customer",
-			logger,
-		);
-	}
-
-	private loadSubscription(subscriptionId: string, logger?: Logger) {
-		return this.collect(
-			(offset) =>
-				this.options.chargebeeClient.subscriptionEntitlement.subscriptionEntitlementsForSubscription(
-					subscriptionId,
-					{ limit: this.options.pageSize, offset },
-				),
-			(item: { subscription_entitlement: SubscriptionEntitlement }) =>
-				this.normalizeSubscription(item.subscription_entitlement),
-			"subscription",
-			logger,
 		);
 	}
 
 	private async collect<T>(
 		loadPage: (offset?: string) => Promise<EntitlementsPage<T>>,
 		normalize: (item: T) => ChargebeeEntitlement | undefined,
-		scope: ChargebeeTarget["mode"],
-		logger?: Logger,
+		scope: "customer" | "subscription",
 	): Promise<ChargebeeEntitlement[]> {
 		const entitlements: ChargebeeEntitlement[] = [];
 		let offset: string | undefined;
@@ -96,7 +112,9 @@ export class ChargebeeEntitlementsLoader {
 				const entitlement = normalize(item);
 				if (entitlement) entitlements.push(entitlement);
 				else
-					logger?.warn(`Chargebee ${scope} entitlement omitted a feature_id`);
+					this.options.logger?.warn(
+						`Chargebee ${scope} entitlement omitted a feature_id`,
+					);
 			}
 
 			offset = response.next_offset;
@@ -106,34 +124,5 @@ export class ChargebeeEntitlementsLoader {
 		throw new Error(
 			`Chargebee ${scope} entitlement pagination exceeded ${this.options.maxPages} pages`,
 		);
-	}
-
-	private normalizeCustomer(
-		entitlement: CustomerEntitlement,
-	): ChargebeeEntitlement | undefined {
-		if (!entitlement.feature_id) return undefined;
-		return withoutUndefined({
-			featureId: entitlement.feature_id,
-			isEnabled: entitlement.is_enabled,
-			value: entitlement.value,
-			name: entitlement.name,
-		});
-	}
-
-	private normalizeSubscription(
-		entitlement: SubscriptionEntitlement,
-	): ChargebeeEntitlement | undefined {
-		if (!entitlement.feature_id) return undefined;
-		return withoutUndefined({
-			featureId: entitlement.feature_id,
-			isEnabled: entitlement.is_enabled,
-			isOverridden: entitlement.is_overridden,
-			value: entitlement.value,
-			name: entitlement.name,
-			featureName: entitlement.feature_name,
-			featureUnit: entitlement.feature_unit,
-			featureType: entitlement.feature_type,
-			expiresAt: entitlement.expires_at,
-		});
 	}
 }

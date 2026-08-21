@@ -11,6 +11,25 @@ type EnabledEntitlement = {
 	metadata: Record<string, boolean | string | number>;
 };
 
+/** The value shapes a Chargebee entitlement can be read as. */
+type ValueKind = "boolean" | "string" | "number" | "object";
+
+const BOOLEAN_VALUES = new Set(["true", "false", "available"]);
+
+/**
+ * The shape to parse an entitlement into. Chargebee stores every value as a
+ * string, so something has to decide whether `"42"` is a number or a string,
+ * and TypeScript generics are gone by the time this runs. The default value
+ * answers it: because it is typed as `T`, its runtime type is always the
+ * declared one.
+ */
+function kindOf(defaultValue: unknown): ValueKind {
+	const kind = typeof defaultValue;
+	return kind === "boolean" || kind === "string" || kind === "number"
+		? kind
+		: "object";
+}
+
 function metadataFor(
 	entitlement: ChargebeeEntitlement,
 	source: SnapshotSource,
@@ -45,34 +64,18 @@ export function errorResolution<T>(
 	return { value, reason: "ERROR", errorCode, errorMessage };
 }
 
-/**
- * Adapts an SDK-agnostic {@link EntitlementResolution} into the
- * `ResolutionDetails` shape both OpenFeature SDKs expect. The server and web
- * SDKs declare structurally identical but nominally distinct `ErrorCode`
- * enums, so the target error code type is a generic parameter instead of a
- * hard dependency on either SDK package.
- */
-export function toResolutionDetails<T, TErrorCode>(
-	resolution: EntitlementResolution<T>,
-): Omit<EntitlementResolution<T>, "errorCode"> & { errorCode?: TErrorCode } {
-	return {
-		...resolution,
-		errorCode: resolution.errorCode as unknown as TErrorCode | undefined,
-	};
-}
-
 function getEnabled<T>(
 	snapshot: ChargebeeEntitlementsSnapshot,
-	flagKey: string,
+	featureId: string,
 	defaultValue: T,
 	source: SnapshotSource,
 ): EnabledEntitlement | EntitlementResolution<T> {
-	const entitlement = snapshot.entitlements[flagKey];
+	const entitlement = snapshot.entitlements[featureId];
 	if (!entitlement) {
 		return errorResolution(
 			defaultValue,
 			"FLAG_NOT_FOUND",
-			`Chargebee feature ${flagKey} was not found`,
+			`Chargebee feature ${featureId} was not found`,
 		);
 	}
 
@@ -95,120 +98,115 @@ function getEnabled<T>(
 const reasonFor = (source: SnapshotSource) =>
 	source === "api" ? "TARGETING_MATCH" : "CACHED";
 
-export function resolveBooleanEntitlement(
-	snapshot: ChargebeeEntitlementsSnapshot,
-	flagKey: string,
-	defaultValue: boolean,
-	source: SnapshotSource,
-): EntitlementResolution<boolean> {
-	const found = getEnabled(snapshot, flagKey, defaultValue, source);
-	if (!("entitlement" in found)) return found;
-
-	const normalized = found.entitlement.value?.trim().toLowerCase();
-	if (
-		!normalized &&
-		(found.entitlement.featureType === undefined ||
-			found.entitlement.featureType === "switch")
-	) {
-		return {
-			value: true,
-			variant: "enabled",
-			reason: reasonFor(source),
-			flagMetadata: found.metadata,
-		};
-	}
-	if (!["true", "false", "available"].includes(normalized ?? "")) {
-		return errorResolution(
-			defaultValue,
-			"TYPE_MISMATCH",
-			`Chargebee feature ${flagKey} is not a boolean entitlement`,
-		);
-	}
-
-	const value = normalized === "true" || normalized === "available";
-	return {
-		value,
-		variant: value ? "enabled" : "disabled",
-		reason: reasonFor(source),
-		flagMetadata: found.metadata,
-	};
+interface ParsedEntitlementValue {
+	value: unknown;
+	variant?: string;
+	extraMetadata?: Record<string, boolean | string | number>;
+	error?: { code: EntitlementErrorCode; message: string };
 }
 
-export function resolveStringEntitlement(
-	snapshot: ChargebeeEntitlementsSnapshot,
-	flagKey: string,
-	defaultValue: string,
-	source: SnapshotSource,
-): EntitlementResolution<string> {
-	const found = getEnabled(snapshot, flagKey, defaultValue, source);
-	if (!("entitlement" in found)) return found;
-
-	const value = found.entitlement.value;
-	if (value === undefined) {
-		return errorResolution(
-			defaultValue,
-			"PARSE_ERROR",
-			`Chargebee feature ${flagKey} has no value`,
-		);
+function parseEntitlementValue(
+	entitlement: ChargebeeEntitlement,
+	kind: ValueKind,
+	featureId: string,
+): ParsedEntitlementValue {
+	switch (kind) {
+		case "boolean": {
+			const normalized = entitlement.value?.trim().toLowerCase();
+			if (
+				!normalized &&
+				(entitlement.featureType === undefined ||
+					entitlement.featureType === "switch")
+			) {
+				return { value: true, variant: "enabled" };
+			}
+			if (!BOOLEAN_VALUES.has(normalized ?? "")) {
+				return {
+					value: undefined,
+					error: {
+						code: "TYPE_MISMATCH",
+						message: `Chargebee feature ${featureId} is not a boolean entitlement`,
+					},
+				};
+			}
+			const value = normalized === "true" || normalized === "available";
+			return { value, variant: value ? "enabled" : "disabled" };
+		}
+		case "string": {
+			const value = entitlement.value;
+			if (value === undefined) {
+				return {
+					value: undefined,
+					error: {
+						code: "PARSE_ERROR",
+						message: `Chargebee feature ${featureId} has no value`,
+					},
+				};
+			}
+			return { value, variant: value };
+		}
+		case "number": {
+			const rawValue = entitlement.value?.trim();
+			if (rawValue?.toLowerCase() === "unlimited") {
+				return {
+					value: Number.POSITIVE_INFINITY,
+					variant: "unlimited",
+					extraMetadata: { unlimited: true },
+				};
+			}
+			const value = rawValue ? Number(rawValue) : Number.NaN;
+			if (!Number.isFinite(value)) {
+				return {
+					value: undefined,
+					error: {
+						code: "TYPE_MISMATCH",
+						message: `Chargebee feature ${featureId} is not a numeric entitlement`,
+					},
+				};
+			}
+			return { value, variant: rawValue };
+		}
+		case "object":
+			return {
+				value: entitlement,
+				variant: entitlement.value ?? "enabled",
+			};
 	}
-
-	return {
-		value,
-		variant: value,
-		reason: reasonFor(source),
-		flagMetadata: found.metadata,
-	};
 }
 
-export function resolveNumberEntitlement(
+/**
+ * Resolves an entitlement into whatever shape `defaultValue` declares, and
+ * falls back to that default when the feature is missing, disabled, expired,
+ * or holds a value of another shape.
+ */
+export function resolveEntitlement<T>(
 	snapshot: ChargebeeEntitlementsSnapshot,
-	flagKey: string,
-	defaultValue: number,
-	source: SnapshotSource,
-): EntitlementResolution<number> {
-	const found = getEnabled(snapshot, flagKey, defaultValue, source);
-	if (!("entitlement" in found)) return found;
-
-	const rawValue = found.entitlement.value?.trim();
-	if (rawValue?.toLowerCase() === "unlimited") {
-		return {
-			value: Number.POSITIVE_INFINITY,
-			variant: "unlimited",
-			reason: reasonFor(source),
-			flagMetadata: { ...found.metadata, unlimited: true },
-		};
-	}
-
-	const value = rawValue ? Number(rawValue) : Number.NaN;
-	if (!Number.isFinite(value)) {
-		return errorResolution(
-			defaultValue,
-			"TYPE_MISMATCH",
-			`Chargebee feature ${flagKey} is not a numeric entitlement`,
-		);
-	}
-
-	return {
-		value,
-		variant: rawValue,
-		reason: reasonFor(source),
-		flagMetadata: found.metadata,
-	};
-}
-
-export function resolveObjectEntitlement<T>(
-	snapshot: ChargebeeEntitlementsSnapshot,
-	flagKey: string,
+	featureId: string,
 	defaultValue: T,
 	source: SnapshotSource,
 ): EntitlementResolution<T> {
-	const found = getEnabled(snapshot, flagKey, defaultValue, source);
+	const found = getEnabled(snapshot, featureId, defaultValue, source);
 	if (!("entitlement" in found)) return found;
 
+	const parsed = parseEntitlementValue(
+		found.entitlement,
+		kindOf(defaultValue),
+		featureId,
+	);
+	if (parsed.error) {
+		return errorResolution(
+			defaultValue,
+			parsed.error.code,
+			parsed.error.message,
+		);
+	}
+
 	return {
-		value: found.entitlement as unknown as T,
-		variant: found.entitlement.value ?? "enabled",
+		value: parsed.value as T,
+		variant: parsed.variant,
 		reason: reasonFor(source),
-		flagMetadata: found.metadata,
+		flagMetadata: parsed.extraMetadata
+			? { ...found.metadata, ...parsed.extraMetadata }
+			: found.metadata,
 	};
 }

@@ -1,20 +1,22 @@
+import type { ChargebeeEntitlement } from "../src/shared";
 import {
+	assertTarget,
 	createEntitlementsSnapshot,
-	getTargetFromContext,
-	resolveBooleanEntitlement,
-	resolveNumberEntitlement,
-	resolveObjectEntitlement,
-	resolveStringEntitlement,
+	isSnapshotExpired,
+	parseEntitlementsSnapshot,
+	parseSerializedEntitlementsSnapshot,
+	resolveEntitlement,
+	serializeEntitlementsSnapshot,
 } from "../src/shared";
 
 const now = Date.UTC(2026, 0, 1);
 
 const snapshot = createEntitlementsSnapshot(
-	"customer",
 	[
 		{ featureId: "switch-on", value: "true", isEnabled: true },
 		{ featureId: "switch-off", value: "false", isEnabled: true },
 		{ featureId: "switch-enabled", isEnabled: true },
+		{ featureId: "switch-available", value: "available", isEnabled: true },
 		{ featureId: "seats", value: "25", isEnabled: true },
 		{ featureId: "storage", value: "unlimited", isEnabled: true },
 		{ featureId: "support", value: "priority", isEnabled: true },
@@ -33,36 +35,29 @@ const snapshot = createEntitlementsSnapshot(
 describe("entitlement mapping", () => {
 	it("maps switch entitlements to booleans", () => {
 		expect(
-			resolveBooleanEntitlement(snapshot, "switch-on", false, "api"),
+			resolveEntitlement(snapshot, "switch-on", false, "api"),
 		).toMatchObject({
 			value: true,
 			variant: "enabled",
 			reason: "TARGETING_MATCH",
 		});
 		expect(
-			resolveBooleanEntitlement(snapshot, "switch-off", true, "cache"),
-		).toMatchObject({
-			value: false,
-			reason: "CACHED",
-		});
+			resolveEntitlement(snapshot, "switch-off", true, "cache"),
+		).toMatchObject({ value: false, reason: "CACHED" });
 		expect(
-			resolveBooleanEntitlement(snapshot, "switch-enabled", false, "api"),
-		).toMatchObject({
-			value: true,
-			variant: "enabled",
-		});
+			resolveEntitlement(snapshot, "switch-enabled", false, "api"),
+		).toMatchObject({ value: true, variant: "enabled" });
+		expect(
+			resolveEntitlement(snapshot, "switch-available", false, "api"),
+		).toMatchObject({ value: true });
 	});
 
 	it("maps numeric and unlimited entitlements", () => {
-		expect(resolveNumberEntitlement(snapshot, "seats", 0, "store")).toMatchObject(
-			{
-				value: 25,
-				reason: "CACHED",
-			},
-		);
-		expect(
-			resolveNumberEntitlement(snapshot, "storage", 0, "relay"),
-		).toMatchObject({
+		expect(resolveEntitlement(snapshot, "seats", 0, "store")).toMatchObject({
+			value: 25,
+			reason: "CACHED",
+		});
+		expect(resolveEntitlement(snapshot, "storage", 0, "relay")).toMatchObject({
 			value: Number.POSITIVE_INFINITY,
 			variant: "unlimited",
 			flagMetadata: { unlimited: true },
@@ -71,67 +66,138 @@ describe("entitlement mapping", () => {
 
 	it("maps string and object entitlements", () => {
 		expect(
-			resolveStringEntitlement(snapshot, "support", "basic", "api"),
-		).toMatchObject({
-			value: "priority",
-			variant: "priority",
-		});
+			resolveEntitlement(snapshot, "support", "basic", "api"),
+		).toMatchObject({ value: "priority", variant: "priority" });
 		expect(
-			resolveObjectEntitlement(snapshot, "support", {}, "api").value,
-		).toMatchObject({
-			featureId: "support",
-			value: "priority",
-		});
+			resolveEntitlement<Partial<ChargebeeEntitlement>>(
+				snapshot,
+				"support",
+				{},
+				"api",
+			).value,
+		).toMatchObject({ featureId: "support", value: "priority" });
+	});
+
+	it("takes the value's shape from the default value alone", () => {
+		expect(resolveEntitlement(snapshot, "switch-on", "off", "api").value).toBe(
+			"true",
+		);
+		expect(resolveEntitlement(snapshot, "seats", "0", "api").value).toBe("25");
+		expect(
+			resolveEntitlement<Partial<ChargebeeEntitlement>>(
+				snapshot,
+				"seats",
+				{},
+				"api",
+			).value,
+		).toMatchObject({ featureId: "seats", value: "25" });
 	});
 
 	it("fails closed for disabled, expired, missing, and mismatched values", () => {
-		expect(
-			resolveBooleanEntitlement(snapshot, "disabled", false, "api"),
-		).toMatchObject({
+		expect(resolveEntitlement(snapshot, "disabled", false, "api")).toMatchObject(
+			{ value: false, reason: "DISABLED" },
+		);
+		expect(resolveEntitlement(snapshot, "expired", false, "api")).toMatchObject({
 			value: false,
 			reason: "DISABLED",
 		});
-		expect(
-			resolveBooleanEntitlement(snapshot, "expired", false, "api"),
-		).toMatchObject({
-			value: false,
-			reason: "DISABLED",
-		});
-		expect(
-			resolveBooleanEntitlement(snapshot, "missing", false, "api"),
-		).toMatchObject({
+		expect(resolveEntitlement(snapshot, "missing", false, "api")).toMatchObject({
 			value: false,
 			errorCode: "FLAG_NOT_FOUND",
 		});
-		expect(
-			resolveBooleanEntitlement(snapshot, "support", false, "api"),
-		).toMatchObject({
+		expect(resolveEntitlement(snapshot, "support", false, "api")).toMatchObject({
 			value: false,
 			errorCode: "TYPE_MISMATCH",
 		});
+		expect(resolveEntitlement(snapshot, "support", 0, "api")).toMatchObject({
+			value: 0,
+			errorCode: "TYPE_MISMATCH",
+		});
+		expect(
+			resolveEntitlement(snapshot, "switch-enabled", "basic", "api"),
+		).toMatchObject({ value: "basic", errorCode: "PARSE_ERROR" });
 	});
 });
 
-describe("target context", () => {
-	it("resolves explicit customer and subscription targets", () => {
-		expect(getTargetFromContext({ chargebeeCustomerId: "customer-1" })).toEqual({
-			mode: "customer",
+describe("target validation", () => {
+	it("reduces a target to the single identifier it evaluates against", () => {
+		expect(assertTarget({ customerId: "customer-1" })).toEqual({
 			customerId: "customer-1",
 		});
-		expect(
-			getTargetFromContext({
-				chargebeeEvaluationMode: "subscription",
-				chargebeeSubscriptionId: "subscription-1",
-			}),
-		).toEqual({
-			mode: "subscription",
+		expect(assertTarget({ subscriptionId: "subscription-1" })).toEqual({
 			subscriptionId: "subscription-1",
 		});
 	});
 
-	it("does not treat targetingKey as a Chargebee identifier", () => {
-		expect(() => getTargetFromContext({ targetingKey: "app-user-1" })).toThrow(
-			"chargebeeCustomerId",
+	it("ignores unrelated properties a caller's context carries", () => {
+		const context = {
+			targetingKey: "app-user-1",
+			customerId: "customer-1",
+			plan: "pro",
+		};
+
+		expect(assertTarget(context)).toEqual({ customerId: "customer-1" });
+	});
+
+	it("rejects an ambiguous target rather than guessing", () => {
+		expect(() =>
+			assertTarget({
+				customerId: "customer-1",
+				subscriptionId: "subscription-1",
+			} as never),
+		).toThrow("not both");
+	});
+
+	it("rejects a target with no usable identifier", () => {
+		expect(() => assertTarget({ targetingKey: "app-user-1" } as never)).toThrow(
+			"requires a non-empty customerId or subscriptionId",
 		);
+		expect(() => assertTarget({ customerId: "" } as never)).toThrow(
+			"requires a non-empty customerId or subscriptionId",
+		);
+	});
+});
+
+describe("snapshot parsing and serialization", () => {
+	it("serializes and parses a valid snapshot roundtrip", () => {
+		const serialized = serializeEntitlementsSnapshot(snapshot);
+		const parsed = parseSerializedEntitlementsSnapshot(serialized);
+
+		expect(parsed).toEqual(snapshot);
+	});
+
+	it("identifies expired snapshots correctly", () => {
+		expect(isSnapshotExpired(snapshot, now)).toBe(false);
+		expect(isSnapshotExpired(snapshot, now + 70_000)).toBe(true);
+	});
+
+	it("throws on invalid snapshot structures", () => {
+		expect(() => parseEntitlementsSnapshot(null)).toThrow("expected an object");
+		expect(() => parseEntitlementsSnapshot({})).toThrow("schemaVersion");
+		expect(() =>
+			parseEntitlementsSnapshot({
+				schemaVersion: 1,
+				generatedAt: "invalid",
+				expiresAt: "invalid",
+				entitlements: {},
+			}),
+		).toThrow("generatedAt");
+		expect(() =>
+			parseEntitlementsSnapshot({
+				schemaVersion: 1,
+				generatedAt: new Date().toISOString(),
+				expiresAt: new Date().toISOString(),
+			}),
+		).toThrow("entitlements");
+		expect(() =>
+			parseEntitlementsSnapshot({
+				schemaVersion: 1,
+				generatedAt: new Date().toISOString(),
+				expiresAt: new Date().toISOString(),
+				entitlements: {
+					bad: { featureId: "", isEnabled: true },
+				},
+			}),
+		).toThrow("featureId");
 	});
 });

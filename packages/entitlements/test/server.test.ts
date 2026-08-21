@@ -5,10 +5,13 @@ import {
 } from "../src/cache";
 import {
 	ChargebeeEntitlements,
-	type ChargebeeEntitlementsClient,
 	createEntitlementsRelayHandler,
 } from "../src/server";
-import type { ChargebeeEntitlementsSnapshot, EvaluationContextLike } from "../src/shared";
+import type { ChargebeeEntitlementsClient } from "../src/server/loader";
+import type {
+	ChargebeeEntitlementsSnapshot,
+	ChargebeeTarget,
+} from "../src/shared";
 
 function makeClient(
 	customerPages: Array<{
@@ -32,10 +35,7 @@ function makeClient(
 	return { client, customerRequest, subscriptionRequest };
 }
 
-const context: EvaluationContextLike = {
-	targetingKey: "app-user-1",
-	chargebeeCustomerId: "customer-1",
-};
+const target: ChargebeeTarget = { customerId: "customer-1" };
 
 /** A durable store keeps snapshots past `expiresAt`; the client refreshes them. */
 function makeDurableStore(): EntitlementsStorage {
@@ -99,8 +99,8 @@ describe("ChargebeeEntitlements", () => {
 			cacheTtlMs: 60_000,
 		});
 
-		const first = await entitlements.getBooleanValue("sso", false, context);
-		const second = await entitlements.getNumberValue("seats", 0, context);
+		const first = await entitlements.getValue("sso", false, target);
+		const second = await entitlements.getValue("seats", 0, target);
 
 		expect(first).toMatchObject({ value: true, reason: "TARGETING_MATCH" });
 		expect(second).toMatchObject({ value: 10, reason: "CACHED" });
@@ -142,8 +142,8 @@ describe("ChargebeeEntitlements", () => {
 			} as unknown as ChargebeeEntitlementsClient,
 		});
 
-		const first = entitlements.getSnapshot(context);
-		const second = entitlements.getSnapshot(context);
+		const first = entitlements.getSnapshot(target);
+		const second = entitlements.getSnapshot(target);
 		release?.();
 
 		await expect(Promise.all([first, second])).resolves.toHaveLength(2);
@@ -175,12 +175,12 @@ describe("ChargebeeEntitlements", () => {
 			} as unknown as ChargebeeEntitlementsClient,
 		});
 
-		const first = entitlements.getSnapshot(context);
+		const first = entitlements.getSnapshot(target);
 		await started;
-		await entitlements.deleteSnapshot({ mode: "customer", customerId: "customer-1" });
+		await entitlements.deleteSnapshot(target);
 		release?.();
 		await first;
-		await entitlements.getSnapshot(context);
+		await entitlements.getSnapshot(target);
 
 		expect(customerRequest).toHaveBeenCalledTimes(2);
 	});
@@ -192,7 +192,18 @@ describe("ChargebeeEntitlements", () => {
 		});
 
 		await expect(
-			entitlements.getBooleanValue("sso", false, { targetingKey: "app-user-1" }),
+			entitlements.getValue("sso", false, {
+				targetingKey: "app-user-1",
+			} as never),
+		).resolves.toMatchObject({
+			value: false,
+			errorCode: "INVALID_CONTEXT",
+		});
+		await expect(
+			entitlements.getValue("sso", false, {
+				customerId: "customer-1",
+				subscriptionId: "subscription-1",
+			} as never),
 		).resolves.toMatchObject({
 			value: false,
 			errorCode: "INVALID_CONTEXT",
@@ -229,10 +240,7 @@ describe("ChargebeeEntitlements", () => {
 		});
 
 		await expect(
-			entitlements.getNumberValue("seats", 0, {
-				chargebeeEvaluationMode: "subscription",
-				chargebeeSubscriptionId: "subscription-1",
-			}),
+			entitlements.getValue("seats", 0, { subscriptionId: "subscription-1" }),
 		).resolves.toMatchObject({
 			value: 50,
 			flagMetadata: {
@@ -246,15 +254,16 @@ describe("ChargebeeEntitlements", () => {
 		);
 	});
 
-	it("evaluates directly against an explicit ChargebeeTarget", async () => {
+	it("ignores unrelated properties on a context-shaped target", async () => {
 		const { client } = makeClient([ssoPage]);
 		const entitlements = new ChargebeeEntitlements({ chargebeeClient: client });
+		const context = {
+			targetingKey: "app-user-1",
+			customerId: "customer-1",
+		};
 
 		await expect(
-			entitlements.getBooleanValue("sso", false, {
-				mode: "customer",
-				customerId: "customer-1",
-			}),
+			entitlements.getValue("sso", false, context),
 		).resolves.toMatchObject({ value: true, reason: "TARGETING_MATCH" });
 	});
 
@@ -264,20 +273,20 @@ describe("ChargebeeEntitlements", () => {
 		const store = createMemoryEntitlementsCache();
 		await new ChargebeeEntitlements({
 			chargebeeClient: client,
-			store,
-		}).refreshSnapshot({ mode: "customer", customerId: "customer-1" });
+			durableStore: store,
+		}).refreshSnapshot(target);
 
 		const reader = new ChargebeeEntitlements({
 			chargebeeClient: client,
 			cache,
-			store,
+			durableStore: store,
 			refreshOnMiss: "background",
 		});
 
-		await expect(reader.getSnapshot(context)).resolves.toMatchObject({
+		await expect(reader.getSnapshot(target)).resolves.toMatchObject({
 			source: "store",
 		});
-		await expect(reader.getSnapshot(context)).resolves.toMatchObject({
+		await expect(reader.getSnapshot(target)).resolves.toMatchObject({
 			source: "cache",
 		});
 		expect(customerRequest).toHaveBeenCalledTimes(1);
@@ -296,16 +305,13 @@ describe("ChargebeeEntitlements", () => {
 				set: vi.fn(async () => undefined),
 				delete: vi.fn(async () => undefined),
 			},
-			store,
+			durableStore: store,
 			onError,
 		});
-		await entitlements.refreshSnapshot({
-			mode: "customer",
-			customerId: "customer-1",
-		});
+		await entitlements.refreshSnapshot(target);
 
 		await expect(
-			entitlements.getBooleanValue("sso", false, context),
+			entitlements.getValue("sso", false, target),
 		).resolves.toMatchObject({
 			value: true,
 			reason: "CACHED",
@@ -313,7 +319,7 @@ describe("ChargebeeEntitlements", () => {
 		});
 		expect(onError).toHaveBeenCalledWith(expect.any(Error), {
 			operation: "cache-read",
-			target: { mode: "customer", customerId: "customer-1" },
+			target: { customerId: "customer-1" },
 		});
 	});
 
@@ -325,12 +331,11 @@ describe("ChargebeeEntitlements", () => {
 		const entitlements = new ChargebeeEntitlements({
 			chargebeeClient: client,
 			cache,
-			store,
+			durableStore: store,
 		});
-		const target = { mode: "customer", customerId: "customer-1" } as const;
 
 		await entitlements.refreshSnapshot(target);
-		await entitlements.getSnapshot(context);
+		await entitlements.getSnapshot(target);
 		await entitlements.refreshSnapshot(target);
 
 		expect(evict).toHaveBeenCalledTimes(2);
@@ -378,14 +383,13 @@ describe("ChargebeeEntitlements", () => {
 				},
 			} as unknown as ChargebeeEntitlementsClient,
 			cache: createMemoryEntitlementsCache(),
-			store: makeDurableStore(),
+			durableStore: makeDurableStore(),
 			refreshOnMiss: "background",
 			onSnapshotRefreshed,
 		});
-		const target = { mode: "customer", customerId: "customer-1" } as const;
 
 		await expect(
-			entitlements.getBooleanValue("sso", false, context),
+			entitlements.getValue("sso", false, target),
 		).resolves.toMatchObject({ reason: "STALE" });
 		await vi.waitFor(() => expect(customerRequest).toHaveBeenCalledTimes(1));
 
@@ -403,7 +407,7 @@ describe("ChargebeeEntitlements", () => {
 		expect(onSnapshotRefreshed).toHaveBeenCalledWith(
 			expect.objectContaining({ trigger: "explicit" }),
 		);
-		await expect(entitlements.getSnapshot(context)).resolves.toMatchObject({
+		await expect(entitlements.getSnapshot(target)).resolves.toMatchObject({
 			snapshot: {
 				entitlements: { sso: expect.objectContaining({ value: "false" }) },
 			},
@@ -415,14 +419,12 @@ describe("ChargebeeEntitlements", () => {
 		const onSnapshotRefreshed = vi.fn();
 		const entitlements = new ChargebeeEntitlements({
 			chargebeeClient: client,
-			store: createMemoryEntitlementsCache(),
+			durableStore: createMemoryEntitlementsCache(),
 			refreshOnMiss: "background",
 			onSnapshotRefreshed,
 		});
 
-		await expect(
-			entitlements.getBooleanValue("sso", false, context),
-		).resolves.toEqual({
+		await expect(entitlements.getValue("sso", false, target)).resolves.toEqual({
 			value: false,
 			reason: "STALE",
 			flagMetadata: { snapshotPending: true },
@@ -434,7 +436,7 @@ describe("ChargebeeEntitlements", () => {
 			),
 		);
 		await expect(
-			entitlements.getBooleanValue("sso", false, context),
+			entitlements.getValue("sso", false, target),
 		).resolves.toMatchObject({ value: true, reason: "CACHED" });
 		expect(customerRequest).toHaveBeenCalledTimes(1);
 	});
@@ -443,17 +445,14 @@ describe("ChargebeeEntitlements", () => {
 		const { client, customerRequest } = makeClient([ssoPage]);
 		const entitlements = new ChargebeeEntitlements({
 			chargebeeClient: client,
-			store: makeDurableStore(),
+			durableStore: makeDurableStore(),
 			snapshotTtlMs: 1,
 			refreshOnMiss: "background",
 		});
-		await entitlements.refreshSnapshot({
-			mode: "customer",
-			customerId: "customer-1",
-		});
+		await entitlements.refreshSnapshot(target);
 		await new Promise((resolve) => setTimeout(resolve, 5));
 
-		await expect(entitlements.getSnapshot(context)).resolves.toMatchObject({
+		await expect(entitlements.getSnapshot(target)).resolves.toMatchObject({
 			source: "store",
 		});
 		await vi.waitFor(() => expect(customerRequest).toHaveBeenCalledTimes(2));
@@ -472,20 +471,37 @@ describe("ChargebeeEntitlements", () => {
 				},
 			} as unknown as ChargebeeEntitlementsClient,
 			refreshOnMiss: "background",
-			refreshBackoffMs: 60_000,
 			onError,
+			advanced: { refreshBackoffMs: 60_000 },
 		});
 
-		await entitlements.getBooleanValue("sso", false, context);
+		await entitlements.getValue("sso", false, target);
 		await vi.waitFor(() =>
 			expect(onError).toHaveBeenCalledWith(
 				expect.any(Error),
 				expect.objectContaining({ operation: "refresh" }),
 			),
 		);
-		await entitlements.getBooleanValue("sso", false, context);
+		await entitlements.getValue("sso", false, target);
 
 		expect(customerRequest).toHaveBeenCalledTimes(1);
+	});
+
+	it("warns through the configured logger when Chargebee omits a feature_id", async () => {
+		const logger = { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() };
+		const { client } = makeClient([
+			{ list: [{ customer_entitlement: {} as CustomerEntitlement }] },
+		]);
+		const entitlements = new ChargebeeEntitlements({
+			chargebeeClient: client,
+			logger,
+		});
+
+		await entitlements.getSnapshot(target);
+
+		expect(logger.warn).toHaveBeenCalledWith(
+			expect.stringContaining("omitted a feature_id"),
+		);
 	});
 });
 
@@ -495,16 +511,14 @@ describe("entitlement relay", () => {
 		const entitlements = new ChargebeeEntitlements({
 			chargebeeClient: client,
 		});
-		const resolveContext = vi.fn(async () => context);
+		const resolveContext = vi.fn(async () => target);
 		const handler = createEntitlementsRelayHandler({
 			entitlements,
 			resolveContext,
 		});
 
 		const spoofed = await handler(
-			new Request(
-				"https://example.com/api/entitlements?chargebeeCustomerId=other",
-			),
+			new Request("https://example.com/api/entitlements?customerId=other"),
 		);
 		expect(spoofed.status).toBe(400);
 		expect(resolveContext).not.toHaveBeenCalled();
@@ -538,7 +552,7 @@ describe("entitlement relay", () => {
 
 	it("rejects methods other than GET", async () => {
 		const { client } = makeClient([]);
-		const resolveContext = vi.fn(async () => context);
+		const resolveContext = vi.fn(async () => target);
 		const handler = createEntitlementsRelayHandler({
 			entitlements: new ChargebeeEntitlements({
 				chargebeeClient: client,

@@ -1,14 +1,12 @@
 import type { CustomerEntitlement } from "chargebee";
-import {
-	ChargebeeEntitlements,
-	type ChargebeeEntitlementsClient,
-} from "../src/server";
-import type { EntitlementResolution, FeatureTarget } from "../src/shared";
-import {
-	type EntitlementsEvaluator,
-	Feature,
-	setDefaultEntitlements,
+import { ChargebeeEntitlements } from "../src/server";
+import type { ChargebeeEntitlementsClient } from "../src/server/loader";
+import type {
+	ChargebeeTarget,
+	EntitlementResolution,
+	EntitlementsClient,
 } from "../src/shared";
+import { Feature, setDefaultEntitlements } from "../src/shared";
 
 function makeEntitlements() {
 	const customerRequest = vi.fn(async () => ({
@@ -48,7 +46,7 @@ function makeEntitlements() {
 	return new ChargebeeEntitlements({ chargebeeClient: client });
 }
 
-const target: FeatureTarget = { mode: "customer", customerId: "customer-1" };
+const target: ChargebeeTarget = { customerId: "customer-1" };
 
 afterEach(() => {
 	setDefaultEntitlements(undefined);
@@ -58,10 +56,7 @@ describe("Feature", () => {
 	it("resolves the unwrapped value against the default client", async () => {
 		setDefaultEntitlements(makeEntitlements());
 
-		const licensedSeats = new Feature("licensed-seats", {
-			type: "number",
-			defaultValue: 0,
-		});
+		const licensedSeats = new Feature<number>("licensed-seats", 0);
 
 		const seats = await licensedSeats.get(target);
 
@@ -69,21 +64,12 @@ describe("Feature", () => {
 		expect(seats).toBe(25);
 	});
 
-	it("infers the value type from the declared feature type", async () => {
+	it("takes the value type from the declared default value", async () => {
 		const entitlements = makeEntitlements();
 
-		const advancedReports = entitlements.feature("advanced-reports", {
-			type: "boolean",
-			defaultValue: false,
-		});
-		const supportTier = entitlements.feature("support-tier", {
-			type: "string",
-			defaultValue: "basic",
-		});
-		const seats = entitlements.feature("licensed-seats", {
-			type: "number",
-			defaultValue: 0,
-		});
+		const advancedReports = entitlements.feature("advanced-reports", false);
+		const supportTier = entitlements.feature("support-tier", "basic");
+		const seats = entitlements.feature("licensed-seats", 0);
 
 		const enabled = await advancedReports.get(target);
 		const tier = await supportTier.get(target);
@@ -99,12 +85,21 @@ describe("Feature", () => {
 		});
 	});
 
+	it("infers the type parameter from the default value", async () => {
+		setDefaultEntitlements(makeEntitlements());
+
+		const seats = new Feature("licensed-seats", 0);
+
+		expectTypeOf(seats).toEqualTypeOf<Feature<number>>();
+		expectTypeOf(await seats.get(target)).toEqualTypeOf<number>();
+	});
+
 	it("resolves object features to the declared shape", async () => {
 		const entitlements = makeEntitlements();
-		const supportTier = entitlements.feature("support-tier", {
-			type: "object",
-			defaultValue: {} as { featureId: string; value?: string },
-		});
+		const supportTier = entitlements.feature(
+			"support-tier",
+			{} as { featureId: string; value?: string },
+		);
 
 		const details = await supportTier.getDetails(target);
 
@@ -118,10 +113,7 @@ describe("Feature", () => {
 	});
 
 	it("exposes the full resolution via getDetails", async () => {
-		const seats = makeEntitlements().feature("licensed-seats", {
-			type: "number",
-			defaultValue: 0,
-		});
+		const seats = makeEntitlements().feature("licensed-seats", 0);
 
 		const details = await seats.getDetails(target);
 
@@ -134,10 +126,7 @@ describe("Feature", () => {
 
 	it("falls back to the default value when the feature is missing", async () => {
 		setDefaultEntitlements(makeEntitlements());
-		const missing = new Feature("does-not-exist", {
-			type: "number",
-			defaultValue: 7,
-		});
+		const missing = new Feature("does-not-exist", 7);
 
 		await expect(missing.get(target)).resolves.toBe(7);
 		await expect(missing.getDetails(target)).resolves.toMatchObject({
@@ -146,49 +135,52 @@ describe("Feature", () => {
 		});
 	});
 
-	it("prefers an explicit client over the bound and default clients", async () => {
+	it("prefers a bound client over the default one", async () => {
 		const calls: string[] = [];
-		const stub = (name: string): EntitlementsEvaluator => ({
-			getBooleanValue: async () => ({ value: false }),
-			getStringValue: async () => ({ value: "" }),
-			getObjectValue: async <T>() => ({ value: undefined as T }),
-			getNumberValue: async () => {
+		const stub = (name: string, value: number): EntitlementsClient => ({
+			getValue: async () => {
 				calls.push(name);
-				return { value: name === "override" ? 99 : 1 };
+				return { value: value as never };
 			},
 		});
-		setDefaultEntitlements(stub("default"));
+		setDefaultEntitlements(stub("default", 1));
 
-		const seats = new Feature("licensed-seats", {
-			type: "number",
-			defaultValue: 0,
-			client: stub("bound"),
-		});
+		const seats = new Feature("licensed-seats", 0, stub("bound", 2));
 
-		await expect(
-			seats.get(target, { client: stub("override") }),
-		).resolves.toBe(99);
-		expect(calls).toEqual(["override"]);
+		await expect(seats.get(target)).resolves.toBe(2);
+		expect(calls).toEqual(["bound"]);
 	});
 
-	it("binds a copy to a client with withClient", async () => {
-		const entitlements = makeEntitlements();
-		const seats = new Feature("licensed-seats", {
-			type: "number",
-			defaultValue: 0,
-		}).withClient(entitlements);
+	it("binds a client through the constructor", async () => {
+		const seats = new Feature("licensed-seats", 0, makeEntitlements());
 
 		await expect(seats.get(target)).resolves.toBe(25);
 	});
 
 	it("throws a helpful error when no client is configured", async () => {
-		const seats = new Feature("licensed-seats", {
-			type: "number",
-			defaultValue: 0,
-		});
+		const seats = new Feature("licensed-seats", 0);
 
 		await expect(seats.get(target)).rejects.toThrow(
 			/No Chargebee entitlements client is configured/,
 		);
+	});
+});
+
+describe("ChargebeeEntitlements.getValue", () => {
+	it("resolves every shape through a single method", async () => {
+		const entitlements = makeEntitlements();
+
+		await expect(
+			entitlements.getValue("licensed-seats", 0, target),
+		).resolves.toMatchObject({ value: 25 });
+		await expect(
+			entitlements.getValue("support-tier", "basic", target),
+		).resolves.toMatchObject({ value: "priority" });
+		await expect(
+			entitlements.getValue("advanced-reports", false, target),
+		).resolves.toMatchObject({ value: true });
+		await expect(
+			entitlements.getValue("support-tier", {}, target),
+		).resolves.toMatchObject({ value: { featureId: "support-tier" } });
 	});
 });
