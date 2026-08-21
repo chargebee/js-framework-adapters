@@ -8,6 +8,17 @@ export {
 	toResolutionDetails,
 } from "./evaluation";
 export {
+	type EntitlementsEvaluator,
+	Feature,
+	type FeatureDefinition,
+	type FeatureGetOptions,
+	type FeatureTarget,
+	type FeatureType,
+	type FeatureTypeFor,
+	getDefaultEntitlements,
+	setDefaultEntitlements,
+} from "./feature";
+export {
 	createEntitlementsSnapshot,
 	isSnapshotExpired,
 	parseEntitlementsSnapshot,

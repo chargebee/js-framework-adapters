@@ -7,6 +7,8 @@ import {
 	type EntitlementResolution,
 	type EvaluationContextLike,
 	errorResolution,
+	Feature,
+	type FeatureDefinition,
 	getTargetFromContext,
 	isSnapshotExpired,
 	type Logger,
@@ -233,6 +235,23 @@ export class ChargebeeEntitlements {
 				result.source,
 			),
 		);
+	}
+
+	/**
+	 * Declares a feature bound to this client, so its value is fetched with a
+	 * single concise call:
+	 *
+	 * ```ts
+	 * const seats = entitlements.feature("licensed-seats", {
+	 *   type: "number",
+	 *   defaultValue: 0,
+	 * });
+	 *
+	 * const value = await seats.get({ mode: "customer", customerId });
+	 * ```
+	 */
+	feature<T>(featureId: string, definition: FeatureDefinition<T>): Feature<T> {
+		return new Feature(featureId, { ...definition, client: this });
 	}
 
 	/**

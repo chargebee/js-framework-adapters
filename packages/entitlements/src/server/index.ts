@@ -1,4 +1,15 @@
 export {
+	type EntitlementsEvaluator,
+	Feature,
+	type FeatureDefinition,
+	type FeatureGetOptions,
+	type FeatureTarget,
+	type FeatureType,
+	type FeatureTypeFor,
+	getDefaultEntitlements,
+	setDefaultEntitlements,
+} from "../shared";
+export {
 	ChargebeeEntitlements,
 	type ChargebeeEntitlementsClient,
 	type ChargebeeEntitlementsOptions,

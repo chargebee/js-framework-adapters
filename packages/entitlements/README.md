@@ -67,6 +67,64 @@ const enabled = await entitlements.getBooleanValue("advanced-reports", false, {
 context keys with `resolveTarget(context)` when your application has a
 different context model.
 
+## Concise feature API
+
+The `getBooleanValue`/`getNumberValue`/... methods are explicit but verbose to
+repeat at every call site. Declare a feature once and fetch its value with a
+single `get` call. The declared `type` sets the return type, and `get` returns
+the resolved value directly rather than a full resolution object:
+
+```ts
+import { Feature } from "@chargebee/entitlements";
+
+// Declare the feature once, anywhere.
+const licensedSeats = new Feature("licensed-seats", {
+  type: "number",
+  defaultValue: 0,
+});
+
+// Fetch the value for the current request's billing context.
+const seats = await licensedSeats.get({
+  mode: "customer",
+  customerId: ctx.user.chargebeeCustomerId,
+}); // number
+```
+
+`get` accepts the same explicit `ChargebeeTarget` or context-shaped bag as the
+underlying methods. `type` is one of `"boolean"`, `"string"`, `"number"`, or
+`"object"`, and `defaultValue` must match it.
+
+A standalone `new Feature(...)` needs a client to evaluate against. Register one
+once during start-up:
+
+```ts
+import { setDefaultEntitlements } from "@chargebee/entitlements/server";
+import { entitlements } from "@/lib/entitlements";
+
+setDefaultEntitlements(entitlements);
+```
+
+To avoid the global, create features from the client instead — the returned
+feature is bound to it:
+
+```ts
+const licensedSeats = entitlements.feature("licensed-seats", {
+  type: "number",
+  defaultValue: 0,
+});
+```
+
+When you need the reason or Chargebee metadata behind a value, call
+`getDetails`, which returns the same `EntitlementResolution` the explicit
+methods do:
+
+```ts
+const { value, reason, flagMetadata } = await licensedSeats.getDetails(target);
+```
+
+Both `get` and `getDetails` accept `{ client, logger }` to override the bound or
+default client for a single call.
+
 ## Entitlement mapping
 
 | Chargebee value | Resolved as |

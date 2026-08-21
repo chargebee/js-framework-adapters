@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added a concise feature API. Declare a feature with
+  `new Feature(id, { type, defaultValue })` (or `entitlements.feature(...)`) and
+  fetch its typed value with a single `feature.get(target)`; `getDetails`
+  returns the full resolution. Standalone features resolve against the client
+  passed to `setDefaultEntitlements(client)`. The existing
+  `getBooleanValue`/`getNumberValue`/... methods are unchanged.
 - Initial extraction of the framework-agnostic Chargebee entitlements client
   from `@chargebee/openfeature`. `ChargebeeEntitlements` (server) and
   `ChargebeeEntitlementsWebClient` (web) can now be used directly, without an
