@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": false,
+    "incremental": true,
+    "noErrorTruncation": true,
+    "composite": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "types": ["node", "vitest/globals"],
+    "outDir": "./dist",
+    "declarationDir": "./dist",
+    "paths": {
+      "@chargebee/entitlements": ["../entitlements/src/index.ts"],
+      "@chargebee/entitlements/server": ["../entitlements/src/server/index.ts"],
+      "@chargebee/entitlements/web": ["../entitlements/src/web/index.ts"]
+    }
+  },
+  "references": [{ "path": "../entitlements" }],
+  "include": ["src/**/*", "test/**/*"],
+  "exclude": ["**/dist/**", "**/node_modules/**"]
+}

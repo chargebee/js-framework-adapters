@@ -1,0 +1,122 @@
+{
+  "name": "@chargebee/entitlements",
+  "author": "DX Chargebee",
+  "version": "0.1.0-alpha.1",
+  "type": "module",
+  "description": "Framework-agnostic Chargebee entitlements resolution",
+  "license": "MIT",
+  "homepage": "https://github.com/chargebee/js-framework-adapters/blob/main/packages/entitlements/README.md",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:chargebee/js-framework-adapters.git",
+    "directory": "packages/entitlements"
+  },
+  "keywords": [
+    "chargebee",
+    "entitlements",
+    "feature-flags",
+    "nextjs"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "dist/index.mjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.mts",
+  "exports": {
+    ".": {
+      "dev-source": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./cache": {
+      "dev-source": "./src/cache/index.ts",
+      "types": "./dist/cache.d.mts",
+      "default": "./dist/cache.mjs"
+    },
+    "./server": {
+      "dev-source": "./src/server/index.ts",
+      "types": "./dist/server.d.mts",
+      "default": "./dist/server.mjs"
+    },
+    "./web": {
+      "dev-source": "./src/web/index.ts",
+      "types": "./dist/web.d.mts",
+      "default": "./dist/web.mjs"
+    },
+    "./nextjs": {
+      "dev-source": "./src/nextjs.ts",
+      "types": "./dist/nextjs.d.mts",
+      "default": "./dist/nextjs.mjs"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "*": [
+        "./dist/index.d.mts"
+      ],
+      "cache": [
+        "./dist/cache.d.mts"
+      ],
+      "server": [
+        "./dist/server.d.mts"
+      ],
+      "web": [
+        "./dist/web.d.mts"
+      ],
+      "nextjs": [
+        "./dist/nextjs.d.mts"
+      ]
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --project tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "lint:package": "publint run --strict",
+    "lint:types": "attw --profile esm-only --pack ."
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@types/node": "22.15.2",
+    "@vitest/coverage-v8": "^4.0.18",
+    "chargebee": "^3.30.0",
+    "ioredis": "^6.0.0",
+    "next": "^16.3.0",
+    "publint": "^0.3.23",
+    "tsdown": "^0.20.3",
+    "typescript": "^5.9.2",
+    "vitest": "^4.0.18"
+  },
+  "peerDependencies": {
+    "chargebee": "^3.30.0",
+    "ioredis": "^6.0.0",
+    "next": "^16.0.0"
+  },
+  "peerDependenciesMeta": {
+    "chargebee": {
+      "optional": false
+    },
+    "ioredis": {
+      "optional": true
+    },
+    "next": {
+      "optional": true
+    }
+  }
+}
