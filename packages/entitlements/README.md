@@ -1,85 +1,14 @@
 # Chargebee Entitlements
 
-The `@chargebee/entitlements` makes it easy to work with entitlements and features in the Chargebee ecosystem. It handles fetching entitlements, caching them for frequent use either in Redis or in-memory, maintains a durable snapshot in a database for updates. It also supports background refresh, and an authenticated browser relay for Next.js 16 apps. It is a standalone package, but can be used with the [`@chargebee/openfeature`](https://github.com/chargebee/js-framework-adapters/blob/main/packages/openfeature/README.md) adapter.
+Package `@chargebee/entitlements` makes it easy to gate app features by evaluating them against Chargebee's entitlements. It fetches a customer's or subscription's entitlements once, caches them in Redis or in memory, keeps a durable snapshot in your database, and refreshes it in the background.
 
-## Install
+You can use it on the server or on the browser with minimal configuration. We have an [adapter](./src/nextjs.ts) for Next.js apps as well.
 
 ```sh
 pnpm add @chargebee/entitlements chargebee
 ```
 
-## Usage
-
-Declare a feature once, then fetch its value wherever you need it:
-
-```ts
-import { Feature } from "@chargebee/entitlements";
-
-// Declare a typed feature
-const seats = new Feature<number>("licensed-seats", 0);
-
-// Fetch the value at runtime for the given context (customerId or subscriptionId)
-const count = await seats.get({ customerId: user.chargebeeCustomerId });
-
-```
-
-A feature takes an ID and a default value. The default value is mandatory and is required for type cohesion during runtime to convert the chargebee feature value into a primitive. However, the type parameter is optional, since TypeScript infers it from the default:
-
-```ts
-// features.ts
-// export them individually
-export const seats = new Feature("licensed-seats", 0); // Feature<number>
-export const tier = new Feature("support-tier", "basic"); // Feature<string>
-export const reports = new Feature("advanced-reports", false); // Feature<boolean>
-
-// or as a grouped object
-export default {
-  seats: new Feature<number>("licensed-seats", 0),
-  tier: new Feature<string>("support-tier", "basic"),
-  reports: new Feature<boolean>("advanced-reports", false),
-};
-
-const count = await features.seats.get(target);
-```
-
-When you need the reason or Chargebee metadata behind a value, call
-`getDetails` instead of `get`:
-
-```ts
-const { value, reason, flagMetadata } = await seats.getDetails(target);
-```
-
-## Targets
-
-Every evaluation names one Chargebee subject: a customer, whose entitlements
-are consolidated across their subscriptions, or a single subscription.
-
-```ts
-await seats.get({ customerId: user.chargebeeCustomerId });
-await seats.get({ subscriptionId: subscription.id });
-```
-
-There is nothing else to configure — no mode, no default scope. Passing both
-identifiers is rejected rather than resolved, because a customer's
-consolidated entitlements and one subscription's entitlements are different
-answers and guessing between them would hide the mistake. Passing neither is
-rejected too; in particular, a `targetingKey` is never assumed to be a
-Chargebee ID.
-
-Any other properties on the object are ignored, so a request context you
-already have on hand can be passed straight through:
-
-```ts
-const count = await seats.get({
-  targetingKey: session.user.id,
-  customerId: session.user.chargebeeCustomerId,
-});
-```
-
-## Server client
-
-Pass an initialized Chargebee client. Chargebee credentials remain entirely
-in server code.
+## Quick start
 
 ```ts
 import Chargebee from "chargebee";
@@ -93,193 +22,139 @@ const chargebee = new Chargebee({
 export const entitlements = new ChargebeeEntitlements({
   chargebeeClient: chargebee,
 });
+
+const seats = entitlements.feature("licensed-seats", 0); // Feature<number>
+const count = await seats.get({ customerId: user.chargebeeCustomerId });
 ```
 
-A standalone `new Feature(...)` needs a client to evaluate against. Register
-one once during start-up:
+## Features
 
-```ts
-import { setDefaultEntitlements } from "@chargebee/entitlements";
-import { entitlements } from "@/lib/entitlements";
-
-setDefaultEntitlements(entitlements);
-```
-
-To avoid the global, create features from the client instead — the returned
-feature is bound to it:
-
-```ts
-const seats = entitlements.feature("licensed-seats", 0);
-```
-
-For call sites that want the full resolution rather than a declared feature,
-the client evaluates a feature ID directly:
-
-```ts
-const resolution = await entitlements.getValue("licensed-seats", 0, {
-  customerId: session.user.chargebeeCustomerId,
-});
-```
-
-## Entitlement mapping
-
-The default value's type decides how a stored value is read:
+A feature is an ID and a default value. Chargebee stores every value as a string, and the default's type decides how it is read:
 
 | Default value | Chargebee value | Resolved as |
 | --- | --- | --- |
 | `boolean` | Switch (`true`, `false`, `available`, or a bare grant) | Boolean |
 | `string` | Any | The raw string |
-| `number` | Quantity or range | Number |
-| `number` | `unlimited` | `Number.POSITIVE_INFINITY` with `unlimited` metadata |
+| `number` | Quantity or range; `unlimited` | Number; `Number.POSITIVE_INFINITY` |
 | object | Any | The full sanitized entitlement |
 
-Disabled or expired entitlements return the caller's default with the
-`DISABLED` reason. Missing features return `FLAG_NOT_FOUND`; a value that
-cannot be read as the declared type returns `TYPE_MISMATCH`.
-
-## Snapshot resolution
-
-The client fetches and caches the complete entitlement snapshot for a
-customer or subscription. Evaluating multiple flags for the same target does
-not make additional Chargebee calls.
-
-A snapshot is resolved in three steps:
-
-1. `cache` — a shared, fast store such as Redis or in-memory. It absorbs the many
-   entitlement checks a single authenticated request makes.
-2. `durableStore` — a durable store such as PostgreSQL. It is the source of
-   truth.
-3. The Chargebee API — used only when the store has nothing, then written back
-   to the store and the cache.
-
-Both slots take the same `EntitlementsStorage` interface, so any backend can
-fill either role. With neither configured, every miss goes to Chargebee.
-
-```sh
-pnpm add ioredis
-```
+Features can be bound to a client, as show above, or declared once and shared between server and browser code. Standalone features use the client registered with `setDefaultEntitlements`:
 
 ```ts
-import { createRedisEntitlementsCache } from "@chargebee/entitlements/cache";
+// features.ts
+import { Feature, setDefaultEntitlements } from "@chargebee/entitlements";
+
+export const seats = new Feature("licensed-seats", 0);
+export const reports = new Feature("advanced-reports", false);
+
+// at start-up
+setDefaultEntitlements(entitlements);
+```
+
+`get` returns the value. `getDetails` also says why:
+
+```ts
+const { value, status, source, entitlement, error } = await seats.getDetails(target);
+```
+
+| `status` | Meaning | `value` |
+| --- | --- | --- |
+| `granted` | Enabled and read as the declared type | Chargebee's value |
+| `disabled` | Disabled or expired | Default |
+| `pending` | No snapshot loaded yet | Default |
+| `stale` | Browser snapshot expired and refreshing | Default |
+| `error` | `error.code` is `not-found`, `type-mismatch`, `invalid-target`, or `unavailable` | Default |
+
+`source` is `api`, `cache`, `store`, or `relay`, and `entitlement` is the Chargebee entitlement behind the value.
+
+## Targets
+
+A target is `{ customerId }`, whose entitlements are consolidated across the customer's subscriptions, or `{ subscriptionId }`. Passing both or neither resolves to `invalid-target`, so the package never guesses which one you meant. Other properties are ignored, so a request context can be passed straight through.
+
+The server client evaluates a feature ID directly, or binds a target once per request with `for`:
+
+```ts
+await entitlements.get("licensed-seats", 0, { customerId });
+
+const scoped = entitlements.for({ customerId });
+await scoped.get("licensed-seats", 0);
+await scoped.feature("advanced-reports", false).get();
+```
+
+A bound feature's `get` requires a target on the server client and takes none on a scoped or browser client. Getting this wrong fails to compile.
+
+## Caching and storage
+
+The client loads the complete snapshot for a target, so evaluating several features makes one Chargebee call. It looks for the snapshot in this order:
+
+1. `cache`: fast storage that absorbs the many checks one request makes.
+2. `durableStore`: the source of truth, such as a PostgreSQL table.
+3. Chargebee, only when the store is empty. The result is written back to both.
+
+Both slots take the same `EntitlementsStorage` interface (`get`, `set`, `delete`). With neither configured, every miss goes to Chargebee.
+
+```ts
+import {
+  createMemoryEntitlementsCache,
+  createRedisEntitlementsCache,
+} from "@chargebee/entitlements/cache";
 import Redis from "ioredis";
 
-const redis = new Redis(process.env.REDIS_URL);
-const cache = createRedisEntitlementsCache(redis, { ttlMs: 60_000 });
+// Redis when available (pnpm add ioredis), otherwise in-process memory
+const cache = process.env.REDIS_URL
+  ? createRedisEntitlementsCache(new Redis(process.env.REDIS_URL))
+  : createMemoryEntitlementsCache({ maxEntries: 500 });
 
 export const entitlements = new ChargebeeEntitlements({
   chargebeeClient: chargebee,
   cache,
   durableStore: postgresSnapshotStore,
   snapshotTtlMs: 24 * 60 * 60_000,
-  advanced: { cacheNamespace: "my-app:chargebee:entitlements:v1" },
 });
 ```
 
-`createRedisEntitlementsCache` takes an [ioredis](https://github.com/redis/ioredis)
-client (or anything with its `get`/`set`/`del` methods, such as a `Cluster`).
-For another Redis client or a managed service like Upstash, implement the
-three-method `EntitlementsStorage` interface directly instead:
+The Redis cache takes an [ioredis](https://github.com/redis/ioredis) client, a `Cluster`, or a custom implementation that satisfies the `RedisEntitlementsCacheClient` interface.
 
-```ts
-import type { EntitlementsStorage } from "@chargebee/entitlements/cache";
-import {
-  parseSerializedEntitlementsSnapshot,
-  serializeEntitlementsSnapshot,
-} from "@chargebee/entitlements/cache";
+The memory cache is a simple in-process LRU cache which holds `maxEntries` (500 by default) snapshots by default before eviction. Each process keeps its own copy, and a webhook refresh only clears the copy in the process that handled it. Due to inconsistencies this may cause, it's strongly suggested that production deployments use the Redis cache instead.
 
-const cache: EntitlementsStorage = {
-  get: async (key) => {
-    const value = await upstash.get<string>(key);
-    return value ? parseSerializedEntitlementsSnapshot(value) : undefined;
-  },
-  set: async (key, value, ttlMs = 60_000) => {
-    await upstash.set(key, serializeEntitlementsSnapshot(value), { px: ttlMs });
-  },
-  delete: async (key) => {
-    await upstash.del(key);
-  },
-};
-```
+Both caches expire entries after `ttlMs` (60 seconds by default), and the client's `cacheTtlMs` overrides that per write. `snapshotTtlMs` (5 minutes by default) decides when a snapshot is refreshed from Chargebee. Don't delete store rows at `expiresAt`: the client serves an expired snapshot while it refreshes in the background, which keeps entitlements available during a
+Chargebee outage.
 
-Cache expiry bounds how long the cache may lag the store: when it lapses, the
-next evaluation reads the store again. Both bundled adapters take a `ttlMs`
-option (60s by default), and the client's `cacheTtlMs` overrides it per write
-if you would rather configure expiry alongside the client. Expiry matters most
-for the cache created by `createMemoryEntitlementsCache`, which no other
-process can evict — with several instances running, its `ttlMs` is the worst
-case for how long one of them keeps serving entitlements a webhook has already
-replaced.
+Cache and store read failures fall through to the next step and are reported through `onError`. Concurrent refreshes for one target are deduplicated, and a failed refresh waits `advanced.refreshBackoffMs` (10 seconds) before retrying.
 
-`snapshotTtlMs` stamps `expiresAt` on the snapshot and decides when it is
-refreshed from Chargebee. A store should not delete rows at `expiresAt`: the
-client serves an expired snapshot and refreshes it in the background, so
-entitlements survive a Chargebee outage. Cache and store read failures degrade
-to the next step and are reported through `onError`. Concurrent refreshes for
-one target are deduplicated, and a failed refresh is not retried for
-`advanced.refreshBackoffMs`.
-
-Refresh the snapshot after processing relevant Chargebee webhooks, and remove
-it when the target no longer exists:
+## Webhooks
 
 ```ts
 await entitlements.refreshSnapshot({ subscriptionId });
 await entitlements.deleteSnapshot({ customerId });
 ```
 
-`refreshSnapshot` drops the cached copy before it calls Chargebee, so a webhook
-that changed entitlements cannot be followed by a cache hit on the old values;
-reads fall through to the store until the fresh snapshot lands. Use
-`deleteSnapshot` to clear both layers. An explicit refresh also supersedes any
-request refresh already in flight, because that fetch may have started before
-the webhook's upstream change. `writeSnapshot` stores a snapshot you assembled
-yourself, for example from a webhook payload, using `createEntitlementsSnapshot`.
+`refreshSnapshot` drops the cached copy before calling Chargebee, so reads fall through to the store until the fresh snapshot lands. It also replaces any refresh a request started earlier. `deleteSnapshot` clears the cache and the store. To save a snapshot you built yourself, for example from a webhook payload, pass `createEntitlementsSnapshot(...)` to `writeSnapshot`.
 
-### Keeping Chargebee off the request path
+## Background refresh
 
-`refreshOnMiss: "background"` never calls Chargebee while a request waits. When
-neither the cache nor the store holds a snapshot — a brand-new subscriber, for
-example — the client starts the refresh, and evaluations resolve to the
-caller's default value with reason `STALE` and `snapshotPending` metadata. The
-application can render its free-tier experience and re-check once
-`onSnapshotRefreshed` fires with `trigger: "request"`:
+With `refreshOnMiss: "background"`, requests never wait on Chargebee. When no snapshot exists yet, evaluations return the default with status `pending` while the client fetches one, and `onSnapshotRefreshed` fires when it lands:
 
 ```ts
-const entitlements = new ChargebeeEntitlements({
+new ChargebeeEntitlements({
   chargebeeClient: chargebee,
-  cache,
-  durableStore: postgresSnapshotStore,
   refreshOnMiss: "background",
-  logger: console,
   onSnapshotRefreshed: ({ target, trigger }) => {
     if (trigger === "request") notifySubscriptionReady(target);
   },
-  onError: (error, { operation, target }) => {
-    logger.error({ error, operation, target }, "entitlement snapshot");
-  },
+  onError: (error, { operation, target }) => logger.error({ error, operation, target }),
 });
 ```
 
-Because the default values carry the decision while a snapshot is pending, pass
-defaults that match your lowest paid-for tier rather than your most permissive
-one.
+Pending evaluations return the default values, so set them to your lowest paid tier. On platforms that freeze the process after the response, refresh from a webhook worker or a scheduled job instead.
 
-A background refresh continues after the response is sent, so on platforms that
-freeze the process at that point, refresh snapshots from a webhook worker or a
-reconciliation job instead of relying on request-triggered refreshes.
+## Browser
 
-## Browser client and relay
-
-The browser can't call Chargebee directly because the Chargebee API key is
-secret. `ChargebeeEntitlementsWebClient` loads a sanitized snapshot from an
-authenticated application endpoint and evaluates flags synchronously.
-
-Create an App Router route:
+The Chargebee API key is secret, so the browser loads a sanitized snapshot from a relay route in your app:
 
 ```ts
 // app/api/entitlements/route.ts
 import { createEntitlementsRelayHandler } from "@chargebee/entitlements/nextjs";
-import { entitlements } from "@/lib/entitlements";
-import { getSession } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -288,75 +163,34 @@ export const GET = createEntitlementsRelayHandler({
   entitlements,
   resolveContext: async (request) => {
     const session = await getSession(request);
-    if (!session?.user.chargebeeCustomerId) return null;
-
-    return { customerId: session.user.chargebeeCustomerId };
+    return session?.user.chargebeeCustomerId
+      ? { customerId: session.user.chargebeeCustomerId }
+      : null; // 401
   },
 });
 ```
 
-`resolveContext` must derive billing identity from the authenticated server
-session. The relay rejects `customerId` and `subscriptionId` query parameters,
-emits `private, no-store` responses, and never returns customer IDs,
-subscription IDs, or credentials. `createEntitlementsRelayHandler` from
-`@chargebee/entitlements/server` is the framework-neutral version, generic
-over the request type; the `/nextjs` entry point instantiates it for
-`NextRequest`.
+`resolveContext` must take the billing identity from the authenticated session. The relay rejects `customerId` and `subscriptionId` query parameters, responds with `private, no-store`, and never returns IDs or credentials. Outside Next.js, use the request-generic `createEntitlementsRelayHandler` from `/server`.
 
-Because the relay snapshot is already scoped to the authenticated session,
-features evaluated in the browser take no target at all:
+The browser client has the server client's name and methods, without the target, and evaluates synchronously:
 
 ```ts
-import { ChargebeeEntitlementsWebClient } from "@chargebee/entitlements/web";
-import { setDefaultEntitlements } from "@chargebee/entitlements";
+import { ChargebeeEntitlements } from "@chargebee/entitlements/web";
 
-const webClient = new ChargebeeEntitlementsWebClient({
-  relayUrl: "/api/entitlements",
-});
-await webClient.initialize();
-setDefaultEntitlements(webClient);
+const entitlements = new ChargebeeEntitlements({ relayUrl: "/api/entitlements" });
+await entitlements.initialize();
+setDefaultEntitlements(entitlements);
 
-// The same declarations used on the server, evaluated against the session
-// snapshot already in memory:
-const count = await features.seats.get();
+entitlements.get("advanced-reports", false);
+await seats.get(); // shared features take no target
 ```
 
-Or evaluate a feature ID directly, which the web client does synchronously:
+Before the first load, evaluations return `pending`. Expired snapshots return defaults with status `stale` while the client refetches. Observe this with `onSnapshotExpired`, `onSnapshotRefreshed` (which lists `changedFeatureIds`), and `onError`. Call `reset()` when the signed-in billing subject changes and `close()` on teardown. For subscription-scoped access, pick and authorize the subscription in `resolveContext`, with one relay URL per subscription.
 
-```ts
-const resolution = webClient.getValue("advanced-reports", false);
-```
+## Notes
 
-The browser client fetches with `cache: "no-store"` and same-origin
-credentials, stores the snapshot in memory, and performs synchronous
-evaluations. Expired snapshots fail closed to caller defaults; pass `onStale`,
-`onConfigurationChanged`, or `onError` callbacks to observe those transitions
-(for example, to re-render once a stale snapshot has refreshed). Call `reset()`
-when the session's billing subject changes (e.g. sign-in/sign-out) to clear the
-snapshot and reload it, and `close()` during teardown.
-
-Browser billing identity always comes from `resolveContext` on the server, not
-from the browser. For subscription-scoped browser access, have the
-authenticated callback select and authorize the subscription from server
-session state. Use separate relay URLs when a page needs independent
-snapshots for multiple subscriptions.
-
-## Operational notes
-
-- Customer mode uses `consolidate_entitlements=true` by default.
-- Chargebee pagination is followed with a page size of 100.
-- Without a `durableStore`, an expired snapshot is refetched from Chargebee
-  before the evaluation resolves; stale grants are not served.
-- Node.js is the supported Next.js runtime. Edge compatibility depends on the
-  application's Chargebee and authentication setup.
-- Call `entitlements.close()` during long-lived process shutdown.
-
-## Using with OpenFeature
-
-If your application already standardizes on the
-[OpenFeature](https://openfeature.dev) SDKs, wrap a `ChargebeeEntitlements` (or
-`ChargebeeEntitlementsWebClient`) instance with
-[`@chargebee/openfeature`](https://github.com/chargebee/js-framework-adapters/blob/main/packages/openfeature/README.md)
-instead of calling this package's evaluation methods directly. Both approaches
-share the same cache, store, and refresh behavior — `@chargebee/openfeature`
-only translates method names and result shapes.
+- Customer targets use `consolidate_entitlements=true` by default.
+- Without a `durableStore`, an expired snapshot is refetched before the evaluation resolves, as long as the cache `ttlMs` is shorter than `snapshotTtlMs`.
+- Node.js is the supported Next.js runtime.
+- Call `entitlements.close()` when a long-lived process shuts down.
+- For OpenFeature SDKs, use [`@chargebee/openfeature`](https://github.com/chargebee/js-framework-adapters/blob/main/packages/openfeature/README.md). It shares this package's caching and only maps `status` and `error.code` onto OpenFeature reasons and error codes.

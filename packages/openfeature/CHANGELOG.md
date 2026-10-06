@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The OpenFeature mapping moved here from `@chargebee/entitlements`, which now
+  returns SDK-agnostic `EntitlementDetails`. Provider results are unchanged:
+  `status` and `error.code` map to the same reasons, error codes, variants,
+  and `flagMetadata` as before. The root re-exports `EntitlementDetails`,
+  `EntitlementStatus`, and `EntitlementErrorCode` in place of
+  `EntitlementResolution`.
+  - **Breaking:** `ChargebeeEntitlementsWebProvider.client` is now
+    `.entitlements`, matching the server provider.
 - Extracted all framework/SDK-agnostic logic (snapshot caching, background
   refresh, Chargebee loading, evaluation, the browser relay) into a new
   package, [`@chargebee/entitlements`](https://github.com/chargebee/js-framework-adapters/blob/main/packages/entitlements/README.md).

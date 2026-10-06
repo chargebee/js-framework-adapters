@@ -8,10 +8,7 @@ export type ChargebeeTarget =
 	| { customerId: string; subscriptionId?: never }
 	| { subscriptionId: string; customerId?: never };
 
-/**
- * A minimal, framework-agnostic logger. Structurally compatible with
- * `console` and with the `Logger` type OpenFeature SDKs pass to providers.
- */
+/** A minimal, framework-agnostic logger. Structurally compatible with `console`. */
 export interface Logger {
 	error(...args: unknown[]): void;
 	warn(...args: unknown[]): void;
@@ -44,21 +41,46 @@ export interface ChargebeeEntitlementsSnapshot {
  */
 export type SnapshotSource = "api" | "cache" | "store" | "relay";
 
-export type EntitlementErrorCode =
-	| "PROVIDER_NOT_READY"
-	| "FLAG_NOT_FOUND"
-	| "PARSE_ERROR"
-	| "TYPE_MISMATCH"
-	| "TARGETING_KEY_MISSING"
-	| "INVALID_CONTEXT"
-	| "PROVIDER_FATAL"
-	| "GENERAL";
+/**
+ * Why a feature resolved to its value:
+ *
+ * - `granted`  — the entitlement is enabled and read as the declared type
+ * - `disabled` — the entitlement is disabled or expired; default returned
+ * - `pending`  — no snapshot is loaded yet; default returned
+ * - `stale`    — the browser snapshot expired and is refreshing; default returned
+ * - `error`    — see {@link EntitlementDetails.error}; default returned
+ */
+export type EntitlementStatus =
+	| "granted"
+	| "disabled"
+	| "pending"
+	| "stale"
+	| "error";
 
-export interface EntitlementResolution<T> {
+/**
+ * - `not-found`      — the snapshot has no entitlement for the feature
+ * - `type-mismatch`  — the value cannot be read as the default value's type
+ * - `invalid-target` — the target names neither or both identifiers
+ * - `unavailable`    — the snapshot could not be loaded
+ */
+export type EntitlementErrorCode =
+	| "not-found"
+	| "type-mismatch"
+	| "invalid-target"
+	| "unavailable";
+
+export interface EntitlementError {
+	code: EntitlementErrorCode;
+	message: string;
+}
+
+export interface EntitlementDetails<T> {
 	value: T;
-	variant?: string;
-	reason?: string;
-	errorCode?: EntitlementErrorCode;
-	errorMessage?: string;
-	flagMetadata?: Record<string, boolean | string | number>;
+	status: EntitlementStatus;
+	/** Where the snapshot came from, when one was read. */
+	source?: SnapshotSource;
+	/** The Chargebee entitlement behind the value, when the feature exists. */
+	entitlement?: ChargebeeEntitlement;
+	/** Set when `status` is `error`. */
+	error?: EntitlementError;
 }

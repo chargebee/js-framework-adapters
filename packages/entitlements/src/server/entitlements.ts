@@ -4,18 +4,20 @@ import {
 	type ChargebeeEntitlementsSnapshot,
 	type ChargebeeTarget,
 	createEntitlementsSnapshot,
-	type EntitlementResolution,
-	errorResolution,
+	type EntitlementDetails,
+	errorDetails,
 	Feature,
 	isSnapshotExpired,
 	type Logger,
 	resolveEntitlement,
 	type SnapshotSource,
+	type TargetedEntitlementsClient,
 } from "../shared";
 import {
 	type ChargebeeEntitlementsClient,
 	ChargebeeEntitlementsLoader,
 } from "./loader";
+import { ScopedEntitlements } from "./scoped";
 
 type SnapshotOperation =
 	| "cache-read"
@@ -88,10 +90,9 @@ export class SnapshotPendingError extends Error {
 }
 
 /**
- * Framework-agnostic Chargebee entitlements client. Resolves a snapshot from
- * a shared cache, a durable store, or the Chargebee API, and evaluates
- * feature IDs against it. Use this directly, or wrap it with an adapter such
- * as `@chargebee/openfeature`'s `ChargebeeEntitlementsProvider`.
+ * Framework-agnostic Chargebee entitlements client for servers. Resolves a
+ * snapshot from a shared cache, a durable store, or the Chargebee API, and
+ * evaluates feature IDs against it.
  */
 export class ChargebeeEntitlements {
 	private readonly consolidateCustomerEntitlements: boolean;
@@ -155,11 +156,20 @@ export class ChargebeeEntitlements {
 	 * Resolves a feature into whatever shape `defaultValue` declares, and falls
 	 * back to that default when Chargebee has no usable value.
 	 */
-	getValue<T>(
+	async get<T>(
 		featureId: string,
 		defaultValue: T,
 		target: ChargebeeTarget,
-	): Promise<EntitlementResolution<T>> {
+	): Promise<T> {
+		return (await this.getDetails(featureId, defaultValue, target)).value;
+	}
+
+	/** Like {@link get}, but returns the status and entitlement behind the value. */
+	getDetails<T>(
+		featureId: string,
+		defaultValue: T,
+		target: ChargebeeTarget,
+	): Promise<EntitlementDetails<T>> {
 		return this.evaluate(defaultValue, target, (result) =>
 			resolveEntitlement(
 				result.snapshot,
@@ -168,6 +178,14 @@ export class ChargebeeEntitlements {
 				result.source,
 			),
 		);
+	}
+
+	/**
+	 * Binds this client to one target, e.g. once per request, so evaluations
+	 * read like the browser client's: `entitlements.for(target).get(id, 0)`.
+	 */
+	for(target: ChargebeeTarget): ScopedEntitlements {
+		return new ScopedEntitlements(this, target);
 	}
 
 	/**
@@ -180,8 +198,15 @@ export class ChargebeeEntitlements {
 	 * const count = await seats.get({ customerId });
 	 * ```
 	 */
-	feature<T>(featureId: string, defaultValue: T): Feature<T> {
-		return new Feature(featureId, defaultValue, this);
+	feature<T>(
+		featureId: string,
+		defaultValue: T,
+	): Feature<T, TargetedEntitlementsClient> {
+		return new Feature<T, TargetedEntitlementsClient>(
+			featureId,
+			defaultValue,
+			this,
+		);
 	}
 
 	/**
@@ -270,6 +295,11 @@ export class ChargebeeEntitlements {
 		await this.durableStore?.delete(key);
 	}
 
+	/**
+	 * The server already decided this snapshot is servable (an expired store
+	 * copy outlives Chargebee outages), so the browser trusts it for `ttlMs`
+	 * instead of inheriting a past `expiresAt` and refetching on every check.
+	 */
 	async getRelaySnapshot(
 		target: ChargebeeTarget,
 		ttlMs = 60_000,
@@ -277,32 +307,26 @@ export class ChargebeeEntitlements {
 		const { snapshot } = await this.getSnapshot(target);
 		return {
 			...snapshot,
-			expiresAt: new Date(
-				Math.min(Date.parse(snapshot.expiresAt), Date.now() + ttlMs),
-			).toISOString(),
+			expiresAt: new Date(Date.now() + ttlMs).toISOString(),
 		};
 	}
 
 	private async evaluate<T>(
 		defaultValue: T,
 		target: ChargebeeTarget,
-		resolve: (result: EntitlementsSnapshotResult) => EntitlementResolution<T>,
-	): Promise<EntitlementResolution<T>> {
+		resolve: (result: EntitlementsSnapshotResult) => EntitlementDetails<T>,
+	): Promise<EntitlementDetails<T>> {
 		try {
 			return resolve(await this.getSnapshot(target));
 		} catch (error) {
 			if (error instanceof SnapshotPendingError) {
-				return {
-					value: defaultValue,
-					reason: "STALE",
-					flagMetadata: { snapshotPending: true },
-				};
+				return { value: defaultValue, status: "pending" };
 			}
-			return errorResolution(
+			return errorDetails(
 				defaultValue,
 				error instanceof InvalidEntitlementContextError
-					? "INVALID_CONTEXT"
-					: "GENERAL",
+					? "invalid-target"
+					: "unavailable",
 				error instanceof Error
 					? error.message
 					: "Unable to evaluate Chargebee entitlement",

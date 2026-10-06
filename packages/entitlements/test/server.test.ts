@@ -6,6 +6,7 @@ import {
 import {
 	ChargebeeEntitlements,
 	createEntitlementsRelayHandler,
+	createEntitlementsSnapshot,
 } from "../src/server";
 import type { ChargebeeEntitlementsClient } from "../src/server/loader";
 import type {
@@ -99,11 +100,11 @@ describe("ChargebeeEntitlements", () => {
 			cacheTtlMs: 60_000,
 		});
 
-		const first = await entitlements.getValue("sso", false, target);
-		const second = await entitlements.getValue("seats", 0, target);
+		const first = await entitlements.getDetails("sso", false, target);
+		const second = await entitlements.getDetails("seats", 0, target);
 
-		expect(first).toMatchObject({ value: true, reason: "TARGETING_MATCH" });
-		expect(second).toMatchObject({ value: 10, reason: "CACHED" });
+		expect(first).toMatchObject({ value: true, source: "api" });
+		expect(second).toMatchObject({ value: 10, source: "cache" });
 		expect(customerRequest).toHaveBeenCalledTimes(2);
 		expect(customerRequest).toHaveBeenLastCalledWith(
 			"customer-1",
@@ -185,28 +186,26 @@ describe("ChargebeeEntitlements", () => {
 		expect(customerRequest).toHaveBeenCalledTimes(2);
 	});
 
-	it("returns INVALID_CONTEXT without calling Chargebee", async () => {
+	it("returns invalid-target without calling Chargebee", async () => {
 		const { client, customerRequest } = makeClient([]);
 		const entitlements = new ChargebeeEntitlements({
 			chargebeeClient: client,
 		});
 
 		await expect(
-			entitlements.getValue("sso", false, {
-				targetingKey: "app-user-1",
-			} as never),
+			entitlements.getDetails("sso", false, { userId: "app-user-1" } as never),
 		).resolves.toMatchObject({
 			value: false,
-			errorCode: "INVALID_CONTEXT",
+			error: { code: "invalid-target" },
 		});
 		await expect(
-			entitlements.getValue("sso", false, {
+			entitlements.getDetails("sso", false, {
 				customerId: "customer-1",
 				subscriptionId: "subscription-1",
 			} as never),
 		).resolves.toMatchObject({
 			value: false,
-			errorCode: "INVALID_CONTEXT",
+			error: { code: "invalid-target" },
 		});
 		expect(customerRequest).not.toHaveBeenCalled();
 	});
@@ -240,13 +239,10 @@ describe("ChargebeeEntitlements", () => {
 		});
 
 		await expect(
-			entitlements.getValue("seats", 0, { subscriptionId: "subscription-1" }),
+			entitlements.getDetails("seats", 0, { subscriptionId: "subscription-1" }),
 		).resolves.toMatchObject({
 			value: 50,
-			flagMetadata: {
-				chargebeeFeatureType: "quantity",
-				chargebeeOverridden: true,
-			},
+			entitlement: { featureType: "quantity", isOverridden: true },
 		});
 		expect(subscriptionRequest).toHaveBeenCalledWith(
 			"subscription-1",
@@ -258,13 +254,11 @@ describe("ChargebeeEntitlements", () => {
 		const { client } = makeClient([ssoPage]);
 		const entitlements = new ChargebeeEntitlements({ chargebeeClient: client });
 		const context = {
-			targetingKey: "app-user-1",
+			userId: "app-user-1",
 			customerId: "customer-1",
 		};
 
-		await expect(
-			entitlements.getValue("sso", false, context),
-		).resolves.toMatchObject({ value: true, reason: "TARGETING_MATCH" });
+		await expect(entitlements.get("sso", false, context)).resolves.toBe(true);
 	});
 
 	it("reads the cache first, then the store, and hydrates the cache", async () => {
@@ -311,11 +305,11 @@ describe("ChargebeeEntitlements", () => {
 		await entitlements.refreshSnapshot(target);
 
 		await expect(
-			entitlements.getValue("sso", false, target),
+			entitlements.getDetails("sso", false, target),
 		).resolves.toMatchObject({
 			value: true,
-			reason: "CACHED",
-			flagMetadata: { cacheSource: "store" },
+			status: "granted",
+			source: "store",
 		});
 		expect(onError).toHaveBeenCalledWith(expect.any(Error), {
 			operation: "cache-read",
@@ -389,8 +383,8 @@ describe("ChargebeeEntitlements", () => {
 		});
 
 		await expect(
-			entitlements.getValue("sso", false, target),
-		).resolves.toMatchObject({ reason: "STALE" });
+			entitlements.getDetails("sso", false, target),
+		).resolves.toMatchObject({ status: "pending" });
 		await vi.waitFor(() => expect(customerRequest).toHaveBeenCalledTimes(1));
 
 		const explicitRefresh = entitlements.refreshSnapshot(target);
@@ -424,11 +418,9 @@ describe("ChargebeeEntitlements", () => {
 			onSnapshotRefreshed,
 		});
 
-		await expect(entitlements.getValue("sso", false, target)).resolves.toEqual({
-			value: false,
-			reason: "STALE",
-			flagMetadata: { snapshotPending: true },
-		});
+		await expect(
+			entitlements.getDetails("sso", false, target),
+		).resolves.toEqual({ value: false, status: "pending" });
 
 		await vi.waitFor(() =>
 			expect(onSnapshotRefreshed).toHaveBeenCalledWith(
@@ -436,8 +428,8 @@ describe("ChargebeeEntitlements", () => {
 			),
 		);
 		await expect(
-			entitlements.getValue("sso", false, target),
-		).resolves.toMatchObject({ value: true, reason: "CACHED" });
+			entitlements.getDetails("sso", false, target),
+		).resolves.toMatchObject({ value: true, source: "store" });
 		expect(customerRequest).toHaveBeenCalledTimes(1);
 	});
 
@@ -475,14 +467,14 @@ describe("ChargebeeEntitlements", () => {
 			advanced: { refreshBackoffMs: 60_000 },
 		});
 
-		await entitlements.getValue("sso", false, target);
+		await entitlements.get("sso", false, target);
 		await vi.waitFor(() =>
 			expect(onError).toHaveBeenCalledWith(
 				expect.any(Error),
 				expect.objectContaining({ operation: "refresh" }),
 			),
 		);
-		await entitlements.getValue("sso", false, target);
+		await entitlements.get("sso", false, target);
 
 		expect(customerRequest).toHaveBeenCalledTimes(1);
 	});
@@ -502,6 +494,58 @@ describe("ChargebeeEntitlements", () => {
 		expect(logger.warn).toHaveBeenCalledWith(
 			expect.stringContaining("omitted a feature_id"),
 		);
+	});
+});
+
+describe("ChargebeeEntitlements.for", () => {
+	it("evaluates against the bound target without passing it per call", async () => {
+		const { client } = makeClient([ssoPage]);
+		const scoped = new ChargebeeEntitlements({ chargebeeClient: client }).for(
+			target,
+		);
+
+		await expect(scoped.get("sso", false)).resolves.toBe(true);
+		await expect(scoped.getDetails("sso", false)).resolves.toMatchObject({
+			value: true,
+			status: "granted",
+		});
+	});
+
+	it("shares the parent's snapshot", async () => {
+		const { client, customerRequest } = makeClient([ssoPage]);
+		const entitlements = new ChargebeeEntitlements({
+			chargebeeClient: client,
+			cache: createMemoryEntitlementsCache(),
+		});
+
+		await entitlements.get("sso", false, target);
+		await entitlements.for(target).get("sso", false);
+
+		expect(customerRequest).toHaveBeenCalledTimes(1);
+	});
+
+	it("binds features that take no target", async () => {
+		const { client } = makeClient([ssoPage]);
+		const sso = new ChargebeeEntitlements({ chargebeeClient: client })
+			.for(target)
+			.feature("sso", false);
+
+		await expect(sso.get()).resolves.toBe(true);
+		// @ts-expect-error A scoped feature takes no target.
+		await expect(sso.get(target)).resolves.toBe(true);
+	});
+
+	it("reports an invalid target on evaluation", async () => {
+		const { client, customerRequest } = makeClient([ssoPage]);
+		const scoped = new ChargebeeEntitlements({ chargebeeClient: client }).for(
+			{} as never,
+		);
+
+		await expect(scoped.getDetails("sso", false)).resolves.toMatchObject({
+			value: false,
+			error: { code: "invalid-target" },
+		});
+		expect(customerRequest).not.toHaveBeenCalled();
 	});
 });
 
@@ -548,6 +592,24 @@ describe("entitlement relay", () => {
 			new Request("https://example.com/api/entitlements"),
 		);
 		expect(response.status).toBe(401);
+	});
+
+	it("lets the browser trust a stale snapshot for the relay TTL", async () => {
+		const { client } = makeClient([ssoPage]);
+		const entitlements = new ChargebeeEntitlements({
+			chargebeeClient: client,
+			durableStore: makeDurableStore(),
+		});
+		const expired = createEntitlementsSnapshot(
+			[{ featureId: "sso", value: "true", isEnabled: true }],
+			500,
+			Date.now() - 1_000,
+		);
+		await entitlements.writeSnapshot(target, expired);
+
+		const relayed = await entitlements.getRelaySnapshot(target, 60_000);
+
+		expect(Date.parse(relayed.expiresAt)).toBeGreaterThan(Date.now());
 	});
 
 	it("rejects methods other than GET", async () => {

@@ -97,6 +97,37 @@ describe("ChargebeeEntitlementsProvider", () => {
 		).resolves.toMatchObject({ value: { featureId: "seats", value: "10" } });
 	});
 
+	it("maps entitlement details to OpenFeature variants and metadata", async () => {
+		const { client } = makeClient();
+		const provider = new ChargebeeEntitlementsProvider({
+			chargebeeClient: client,
+		});
+
+		await expect(
+			provider.resolveBooleanEvaluation("sso", false, context),
+		).resolves.toEqual({
+			value: true,
+			variant: "enabled",
+			reason: "TARGETING_MATCH",
+			flagMetadata: {
+				chargebeeFeatureId: "sso",
+				chargebeeEnabled: true,
+				chargebeeValue: "true",
+				cacheSource: "api",
+			},
+		});
+		await expect(
+			provider.resolveBooleanEvaluation("missing", false, context),
+		).resolves.toMatchObject({
+			value: false,
+			reason: "ERROR",
+			errorCode: "FLAG_NOT_FOUND",
+		});
+		await expect(
+			provider.resolveNumberEvaluation("sso", 0, context),
+		).resolves.toMatchObject({ value: 0, errorCode: "TYPE_MISMATCH" });
+	});
+
 	it("resolves a subscription-scoped context", async () => {
 		const subscriptionRequest = vi.fn(async () => ({
 			list: [

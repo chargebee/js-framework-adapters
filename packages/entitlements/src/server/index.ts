@@ -10,3 +10,4 @@ export {
 	type CreateEntitlementsRelayHandlerOptions,
 	createEntitlementsRelayHandler,
 } from "./relay";
+export type { ScopedEntitlements } from "./scoped";

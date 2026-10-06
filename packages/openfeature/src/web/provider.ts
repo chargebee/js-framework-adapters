@@ -1,6 +1,6 @@
 import {
-	ChargebeeEntitlementsWebClient,
-	type ChargebeeEntitlementsWebClientOptions,
+	ChargebeeEntitlements,
+	type ChargebeeEntitlementsOptions,
 } from "@chargebee/entitlements/web";
 import {
 	type ErrorCode,
@@ -11,58 +11,67 @@ import {
 	ProviderEvents,
 	type ResolutionDetails,
 } from "@openfeature/web-sdk";
-import { toResolutionDetails } from "../resolution";
+import { PendingAs, toResolutionDetails } from "../resolution";
 
 export type ChargebeeEntitlementsWebProviderOptions = Omit<
-	ChargebeeEntitlementsWebClientOptions,
-	"onStale" | "onConfigurationChanged" | "onError"
+	ChargebeeEntitlementsOptions,
+	"onSnapshotExpired" | "onSnapshotRefreshed" | "onError"
 >;
 
 /**
- * Adapts `@chargebee/entitlements`'s framework-agnostic
- * `ChargebeeEntitlementsWebClient` to the OpenFeature web `Provider`
- * interface. All relay-fetch and evaluation logic lives in
- * `ChargebeeEntitlementsWebClient` (exposed here as `.client`) — this class
- * only bridges its callbacks to OpenFeature's event emitter.
+ * Adapts `@chargebee/entitlements/web`'s framework-agnostic
+ * `ChargebeeEntitlements` to the OpenFeature web `Provider` interface. All
+ * relay-fetch and evaluation logic lives in `ChargebeeEntitlements` (exposed
+ * here as `.entitlements`) — this class only bridges its callbacks to
+ * OpenFeature's event emitter.
  */
 export class ChargebeeEntitlementsWebProvider implements Provider {
 	readonly metadata = { name: "Chargebee Entitlements" } as const;
 	readonly runsOn = "client" as const;
 	readonly events = new OpenFeatureEventEmitter();
-	readonly client: ChargebeeEntitlementsWebClient;
+	readonly entitlements: ChargebeeEntitlements;
 
 	constructor(options: ChargebeeEntitlementsWebProviderOptions) {
-		this.client = new ChargebeeEntitlementsWebClient({
+		this.entitlements = new ChargebeeEntitlements({
 			...options,
-			onStale: () => {
+			onSnapshotExpired: () => {
 				this.events.emit(ProviderEvents.Stale, {
 					message: "Chargebee entitlement snapshot expired",
 				});
 			},
-			onConfigurationChanged: (flagsChanged) => {
+			onSnapshotRefreshed: ({ changedFeatureIds }) => {
+				if (changedFeatureIds.length === 0) {
+					return;
+				}
+
 				this.events.emit(ProviderEvents.ConfigurationChanged, {
-					flagsChanged,
+					flagsChanged: changedFeatureIds,
 				});
 			},
-			onError: (message) => {
-				this.events.emit(ProviderEvents.Error, { message });
+			onError: (error) => {
+				this.events.emit(ProviderEvents.Error, {
+					message:
+						error instanceof Error
+							? error.message
+							: "Unable to refresh Chargebee entitlements",
+				});
 			},
 		});
 	}
 
 	initialize(): Promise<void> {
-		return this.client.initialize();
+		return this.entitlements.initialize();
 	}
 
 	onContextChange(
 		_oldContext: EvaluationContext,
 		_newContext: EvaluationContext,
 	): Promise<void> {
-		return this.client.reset();
+		return this.entitlements.reset();
 	}
 
 	onClose(): Promise<void> {
-		return this.client.close();
+		return this.entitlements.close();
 	}
 
 	resolveBooleanEvaluation(
@@ -95,12 +104,13 @@ export class ChargebeeEntitlementsWebProvider implements Provider {
 
 	/**
 	 * One evaluation path for all four flag types: the default value's runtime
-	 * type already tells `getValue` which shape to parse the entitlement into.
+	 * type already tells `getDetails` which shape to parse the entitlement into.
 	 * The relay snapshot is scoped to the session, so the context is unused.
 	 */
 	private resolve<T>(flagKey: string, defaultValue: T): ResolutionDetails<T> {
 		return toResolutionDetails<T, ErrorCode>(
-			this.client.getValue(flagKey, defaultValue),
+			this.entitlements.getDetails(flagKey, defaultValue),
+			PendingAs.NotReady,
 		);
 	}
 }

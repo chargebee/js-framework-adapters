@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+- No OpenFeature vocabulary remains in this package; `@chargebee/openfeature`
+  maps the results instead. `EntitlementResolution` is now
+  `EntitlementDetails`: `{ value, status, source?, entitlement?, error? }`.
+  `status` is `granted`, `disabled`, `pending`, `stale`, or `error`;
+  `error.code` is `not-found`, `type-mismatch`, `invalid-target`, or
+  `unavailable`. `reason`, `variant`, `flagMetadata`, `errorCode`, and
+  `errorMessage` are removed, along with the OpenFeature error codes.
+- Both clients and `Feature` share one method pair: `get` returns the value,
+  `getDetails` the `EntitlementDetails`. `getValue` is removed.
+- `ChargebeeEntitlementsWebClient` is now `ChargebeeEntitlements` from
+  `/web` (options: `ChargebeeEntitlementsOptions`), mirroring the server
+  client. Callbacks match the server's names: `onStale` is
+  `onSnapshotExpired`, `onConfigurationChanged(flagsChanged)` is
+  `onSnapshotRefreshed({ snapshot, changedFeatureIds })`, and
+  `onError(message)` is `onError(error, { operation })`.
+- Added `entitlements.for(target)` on the server client. It returns a
+  `ScopedEntitlements` with the browser client's shape (`get`, `getDetails`,
+  `feature`, no target) that shares the parent's cache and store.
+- `EntitlementsClient` is now `TargetedEntitlementsClient` (server, target
+  required) or `ScopedEntitlementsClient` (browser client or
+  `entitlements.for(target)`, no target). `Feature` takes the client type as
+  a second type parameter, so a server client's `feature(...)` requires
+  `get(target)` and a scoped client's requires `get()`. A standalone feature
+  still accepts either; a missing target on the server returns
+  `invalid-target`.
+- The relay stamps `expiresAt` as now plus `relayTtlMs`, even when the server
+  serves an expired stored snapshot. Browsers no longer refetch on every
+  evaluation during a Chargebee outage.
+- The web client discards relay responses started before `reset()` or
+  `close()`, and reports a still-expired snapshot through
+  `onSnapshotExpired` once.
+- The package no longer ships `dist/src`, `dist/test`, or `.tsbuildinfo`.
 - A feature is declared with an ID and a mandatory, concrete default value:
   `new Feature<number>("licensed-seats", 0)` (or `entitlements.feature(...)`,
   which binds it to a client). `feature.get(target)` returns the typed value

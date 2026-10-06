@@ -1,7 +1,8 @@
 export type {
 	ChargebeeEntitlement,
 	ChargebeeTarget,
+	EntitlementDetails,
 	EntitlementErrorCode,
-	EntitlementResolution,
+	EntitlementStatus,
 	Logger,
 } from "@chargebee/entitlements";

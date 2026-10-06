@@ -1,16 +1,54 @@
-import type { ChargebeeTarget, EntitlementResolution } from "./types";
+import type { ChargebeeTarget, EntitlementDetails } from "./types";
 
 /**
- * The one method a {@link Feature} needs from a client. Both
- * `ChargebeeEntitlements` (server) and `ChargebeeEntitlementsWebClient` (web)
- * satisfy it directly.
+ * A server client (`ChargebeeEntitlements` from `/server`): every evaluation
+ * names a target.
  */
-export interface EntitlementsClient {
-	getValue<T>(
+export interface TargetedEntitlementsClient {
+	getDetails<T>(
+		featureId: string,
+		defaultValue: T,
+		target: ChargebeeTarget,
+	): Promise<EntitlementDetails<T>>;
+}
+
+/**
+ * A client already bound to one target, so evaluations take none: the
+ * browser client (its relay snapshot belongs to the session), or a server
+ * client scoped with `entitlements.for(target)`.
+ */
+export interface ScopedEntitlementsClient {
+	getDetails<T>(
+		featureId: string,
+		defaultValue: T,
+	): EntitlementDetails<T> | Promise<EntitlementDetails<T>>;
+}
+
+/** Any client a {@link Feature} can evaluate against. */
+export type EntitlementsClient =
+	| TargetedEntitlementsClient
+	| ScopedEntitlementsClient;
+
+/**
+ * `get` arguments for a client type:
+ *
+ * - server client → `get(target)`
+ * - scoped client (browser, `entitlements.for(target)`) → `get()`
+ * - unknown (standalone feature, default client) → either
+ */
+type TargetArgs<C extends EntitlementsClient> =
+	C extends ScopedEntitlementsClient ? [] : [target: ChargebeeTarget];
+
+/**
+ * How a {@link Feature} calls whichever client it resolves to. A web client
+ * ignores the extra `target` argument.
+ */
+interface AnyEntitlementsClient {
+	getDetails<T>(
 		featureId: string,
 		defaultValue: T,
 		target?: ChargebeeTarget,
-	): Promise<EntitlementResolution<T>> | EntitlementResolution<T>;
+	): Promise<EntitlementDetails<T>> | EntitlementDetails<T>;
 }
 
 let defaultClient: EntitlementsClient | undefined;
@@ -42,13 +80,14 @@ export function setDefaultEntitlements(
  *
  * A standalone feature resolves against the client registered with
  * {@link setDefaultEntitlements}. Pass a client as the third argument, or use
- * `entitlements.feature(...)`, to bind one instead.
+ * `entitlements.feature(...)`, to bind one instead. A bound feature's `get`
+ * requires a target on a server client and takes none on a scoped one.
  */
-export class Feature<T> {
+export class Feature<T, C extends EntitlementsClient = EntitlementsClient> {
 	constructor(
 		readonly featureId: string,
 		readonly defaultValue: T,
-		private readonly client?: EntitlementsClient,
+		private readonly client?: C,
 	) {
 		if (!featureId) throw new Error("featureId is required");
 	}
@@ -56,18 +95,18 @@ export class Feature<T> {
 	/**
 	 * Resolves the feature's value for `target`, falling back to the default
 	 * value when the feature is missing, disabled, or the snapshot is
-	 * unavailable. On the browser web client, `target` is optional because the
+	 * unavailable. On the browser web client there is no target, because the
 	 * relay snapshot is already scoped to the session.
 	 */
-	async get(target?: ChargebeeTarget): Promise<T> {
-		return (await this.getDetails(target)).value;
+	async get(...args: TargetArgs<C>): Promise<T> {
+		return (await this.getDetails(...args)).value;
 	}
 
-	/** Like {@link get}, but returns the full resolution, not just the value. */
-	async getDetails(
-		target?: ChargebeeTarget,
-	): Promise<EntitlementResolution<T>> {
-		const client = this.client ?? defaultClient;
+	/** Like {@link get}, but returns the status and entitlement behind the value. */
+	async getDetails(...args: TargetArgs<C>): Promise<EntitlementDetails<T>> {
+		const [target] = args;
+		const client: AnyEntitlementsClient | undefined =
+			this.client ?? defaultClient;
 		if (!client) {
 			throw new Error(
 				`No Chargebee entitlements client is configured for feature "${this.featureId}". ` +
@@ -76,6 +115,6 @@ export class Feature<T> {
 			);
 		}
 
-		return client.getValue(this.featureId, this.defaultValue, target);
+		return client.getDetails(this.featureId, this.defaultValue, target);
 	}
 }

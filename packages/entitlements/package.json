@@ -1,7 +1,7 @@
 {
   "name": "@chargebee/entitlements",
   "author": "DX Chargebee",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "type": "module",
   "description": "Framework-agnostic Chargebee entitlements resolution",
   "license": "MIT",
@@ -71,6 +71,9 @@
   },
   "files": [
     "dist",
+    "!dist/src",
+    "!dist/test",
+    "!dist/**/*.tsbuildinfo",
     "README.md",
     "LICENSE.md",
     "CHANGELOG.md"

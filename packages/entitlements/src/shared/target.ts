@@ -11,9 +11,11 @@ const nonEmpty = (value: unknown): string | undefined =>
  * consolidated entitlements and one subscription's entitlements are different
  * answers, and guessing which one was meant hides the mistake.
  */
-export function assertTarget(target: ChargebeeTarget): ChargebeeTarget {
-	const customerId = nonEmpty(target.customerId);
-	const subscriptionId = nonEmpty(target.subscriptionId);
+export function assertTarget(
+	target: ChargebeeTarget | undefined,
+): ChargebeeTarget {
+	const customerId = nonEmpty(target?.customerId);
+	const subscriptionId = nonEmpty(target?.subscriptionId);
 
 	if (customerId && subscriptionId) {
 		throw new Error(

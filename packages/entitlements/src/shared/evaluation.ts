@@ -1,20 +1,21 @@
 import type {
 	ChargebeeEntitlement,
 	ChargebeeEntitlementsSnapshot,
+	EntitlementDetails,
+	EntitlementError,
 	EntitlementErrorCode,
-	EntitlementResolution,
 	SnapshotSource,
 } from "./types";
-
-type EnabledEntitlement = {
-	entitlement: ChargebeeEntitlement;
-	metadata: Record<string, boolean | string | number>;
-};
 
 /** The value shapes a Chargebee entitlement can be read as. */
 type ValueKind = "boolean" | "string" | "number" | "object";
 
+type ParsedValue = { value: unknown } | { error: EntitlementError };
+
 const BOOLEAN_VALUES = new Set(["true", "false", "available"]);
+const TRUE_VALUES = new Set(["true", "available"]);
+const UNLIMITED = "unlimited";
+const MS_PER_SECOND = 1000;
 
 /**
  * The shape to parse an entitlement into. Chargebee stores every value as a
@@ -30,147 +31,82 @@ function kindOf(defaultValue: unknown): ValueKind {
 		: "object";
 }
 
-function metadataFor(
-	entitlement: ChargebeeEntitlement,
-	source: SnapshotSource,
-): Record<string, boolean | string | number> {
-	return {
-		chargebeeFeatureId: entitlement.featureId,
-		chargebeeEnabled: entitlement.isEnabled,
-		cacheSource: source,
-		...(entitlement.value !== undefined
-			? { chargebeeValue: entitlement.value }
-			: {}),
-		...(entitlement.featureType !== undefined
-			? { chargebeeFeatureType: entitlement.featureType }
-			: {}),
-		...(entitlement.featureUnit !== undefined
-			? { chargebeeFeatureUnit: entitlement.featureUnit }
-			: {}),
-		...(entitlement.isOverridden !== undefined
-			? { chargebeeOverridden: entitlement.isOverridden }
-			: {}),
-		...(entitlement.expiresAt !== undefined
-			? { chargebeeExpiresAt: entitlement.expiresAt }
-			: {}),
-	};
-}
-
-export function errorResolution<T>(
+export function errorDetails<T>(
 	value: T,
-	errorCode: EntitlementErrorCode,
-	errorMessage: string,
-): EntitlementResolution<T> {
-	return { value, reason: "ERROR", errorCode, errorMessage };
+	code: EntitlementErrorCode,
+	message: string,
+): EntitlementDetails<T> {
+	return { value, status: "error", error: { code, message } };
 }
 
-function getEnabled<T>(
-	snapshot: ChargebeeEntitlementsSnapshot,
-	featureId: string,
-	defaultValue: T,
-	source: SnapshotSource,
-): EnabledEntitlement | EntitlementResolution<T> {
-	const entitlement = snapshot.entitlements[featureId];
-	if (!entitlement) {
-		return errorResolution(
-			defaultValue,
-			"FLAG_NOT_FOUND",
-			`Chargebee feature ${featureId} was not found`,
-		);
+/** Disabled and expired (`expiresAt` is in Unix seconds) entitlements grant nothing. */
+function isActive(entitlement: ChargebeeEntitlement): boolean {
+	if (!entitlement.isEnabled) {
+		return false;
 	}
 
-	const metadata = metadataFor(entitlement, source);
-	const expired =
-		entitlement.expiresAt !== undefined &&
-		entitlement.expiresAt * 1000 <= Date.now();
-	if (!entitlement.isEnabled || expired) {
-		return {
-			value: defaultValue,
-			variant: "disabled",
-			reason: "DISABLED",
-			flagMetadata: metadata,
-		};
-	}
-
-	return { entitlement, metadata };
+	return (
+		entitlement.expiresAt === undefined ||
+		entitlement.expiresAt * MS_PER_SECOND > Date.now()
+	);
 }
 
-const reasonFor = (source: SnapshotSource) =>
-	source === "api" ? "TARGETING_MATCH" : "CACHED";
+const mismatch = (featureId: string, kind: ValueKind): ParsedValue => ({
+	error: {
+		code: "type-mismatch",
+		message: `Chargebee feature ${featureId} is not a ${kind} entitlement`,
+	},
+});
 
-interface ParsedEntitlementValue {
-	value: unknown;
-	variant?: string;
-	extraMetadata?: Record<string, boolean | string | number>;
-	error?: { code: EntitlementErrorCode; message: string };
-}
-
-function parseEntitlementValue(
+/**
+ * Reads an entitlement's string value as `kind`, e.g. for `kind` `number`:
+ * `"25"` → `25`, `"unlimited"` → `Infinity`, `"priority"` → type mismatch.
+ */
+function parseValue(
 	entitlement: ChargebeeEntitlement,
 	kind: ValueKind,
 	featureId: string,
-): ParsedEntitlementValue {
+): ParsedValue {
 	switch (kind) {
 		case "boolean": {
 			const normalized = entitlement.value?.trim().toLowerCase();
-			if (
-				!normalized &&
-				(entitlement.featureType === undefined ||
-					entitlement.featureType === "switch")
-			) {
-				return { value: true, variant: "enabled" };
+
+			// A switch granted without a value is simply on.
+			const bareSwitch =
+				entitlement.featureType === undefined ||
+				entitlement.featureType === "switch";
+			if (!normalized && bareSwitch) {
+				return { value: true };
 			}
+
 			if (!BOOLEAN_VALUES.has(normalized ?? "")) {
-				return {
-					value: undefined,
-					error: {
-						code: "TYPE_MISMATCH",
-						message: `Chargebee feature ${featureId} is not a boolean entitlement`,
-					},
-				};
+				return mismatch(featureId, kind);
 			}
-			const value = normalized === "true" || normalized === "available";
-			return { value, variant: value ? "enabled" : "disabled" };
+
+			return { value: TRUE_VALUES.has(normalized ?? "") };
 		}
 		case "string": {
-			const value = entitlement.value;
-			if (value === undefined) {
-				return {
-					value: undefined,
-					error: {
-						code: "PARSE_ERROR",
-						message: `Chargebee feature ${featureId} has no value`,
-					},
-				};
+			if (entitlement.value === undefined) {
+				return mismatch(featureId, kind);
 			}
-			return { value, variant: value };
+
+			return { value: entitlement.value };
 		}
 		case "number": {
 			const rawValue = entitlement.value?.trim();
-			if (rawValue?.toLowerCase() === "unlimited") {
-				return {
-					value: Number.POSITIVE_INFINITY,
-					variant: "unlimited",
-					extraMetadata: { unlimited: true },
-				};
+			if (rawValue?.toLowerCase() === UNLIMITED) {
+				return { value: Number.POSITIVE_INFINITY };
 			}
+
 			const value = rawValue ? Number(rawValue) : Number.NaN;
 			if (!Number.isFinite(value)) {
-				return {
-					value: undefined,
-					error: {
-						code: "TYPE_MISMATCH",
-						message: `Chargebee feature ${featureId} is not a numeric entitlement`,
-					},
-				};
+				return mismatch(featureId, kind);
 			}
-			return { value, variant: rawValue };
+
+			return { value };
 		}
 		case "object":
-			return {
-				value: entitlement,
-				variant: entitlement.value ?? "enabled",
-			};
+			return { value: entitlement };
 	}
 }
 
@@ -184,29 +120,33 @@ export function resolveEntitlement<T>(
 	featureId: string,
 	defaultValue: T,
 	source: SnapshotSource,
-): EntitlementResolution<T> {
-	const found = getEnabled(snapshot, featureId, defaultValue, source);
-	if (!("entitlement" in found)) return found;
-
-	const parsed = parseEntitlementValue(
-		found.entitlement,
-		kindOf(defaultValue),
-		featureId,
-	);
-	if (parsed.error) {
-		return errorResolution(
-			defaultValue,
-			parsed.error.code,
-			parsed.error.message,
-		);
+): EntitlementDetails<T> {
+	const entitlement = snapshot.entitlements[featureId];
+	if (!entitlement) {
+		return {
+			...errorDetails(
+				defaultValue,
+				"not-found",
+				`Chargebee feature ${featureId} was not found`,
+			),
+			source,
+		};
 	}
 
-	return {
-		value: parsed.value as T,
-		variant: parsed.variant,
-		reason: reasonFor(source),
-		flagMetadata: parsed.extraMetadata
-			? { ...found.metadata, ...parsed.extraMetadata }
-			: found.metadata,
-	};
+	if (!isActive(entitlement)) {
+		return { value: defaultValue, status: "disabled", source, entitlement };
+	}
+
+	const parsed = parseValue(entitlement, kindOf(defaultValue), featureId);
+	if ("error" in parsed) {
+		return {
+			value: defaultValue,
+			status: "error",
+			source,
+			entitlement,
+			error: parsed.error,
+		};
+	}
+
+	return { value: parsed.value as T, status: "granted", source, entitlement };
 }

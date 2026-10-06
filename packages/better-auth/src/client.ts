@@ -37,6 +37,8 @@ export const chargebeeClient = <
 			"/subscription/cancel": "POST",
 			"/subscription/portal": "POST",
 			"/subscription/list": "GET",
+			"/entitlements/has-access": "POST",
+			"/entitlements/list": "GET",
 		},
 	} satisfies BetterAuthClientPlugin;
 

@@ -1,8 +1,10 @@
-export { errorResolution, resolveEntitlement } from "./evaluation";
+export { errorDetails, resolveEntitlement } from "./evaluation";
 export {
 	type EntitlementsClient,
 	Feature,
+	type ScopedEntitlementsClient,
 	setDefaultEntitlements,
+	type TargetedEntitlementsClient,
 } from "./feature";
 export {
 	createEntitlementsSnapshot,
@@ -16,8 +18,10 @@ export type {
 	ChargebeeEntitlement,
 	ChargebeeEntitlementsSnapshot,
 	ChargebeeTarget,
+	EntitlementDetails,
+	EntitlementError,
 	EntitlementErrorCode,
-	EntitlementResolution,
+	EntitlementStatus,
 	Logger,
 	SnapshotSource,
 } from "./types";

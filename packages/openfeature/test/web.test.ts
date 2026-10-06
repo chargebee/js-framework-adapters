@@ -118,7 +118,7 @@ describe("ChargebeeEntitlementsWebProvider", () => {
 			fetchImplementation: async () =>
 				Response.json(createEntitlementsSnapshot([], 60_000)),
 		});
-		const close = vi.spyOn(provider.client, "close");
+		const close = vi.spyOn(provider.entitlements, "close");
 
 		await provider.onClose();
 

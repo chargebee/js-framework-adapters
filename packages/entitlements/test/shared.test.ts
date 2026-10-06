@@ -38,15 +38,16 @@ describe("entitlement mapping", () => {
 			resolveEntitlement(snapshot, "switch-on", false, "api"),
 		).toMatchObject({
 			value: true,
-			variant: "enabled",
-			reason: "TARGETING_MATCH",
+			status: "granted",
+			source: "api",
+			entitlement: { featureId: "switch-on" },
 		});
 		expect(
 			resolveEntitlement(snapshot, "switch-off", true, "cache"),
-		).toMatchObject({ value: false, reason: "CACHED" });
+		).toMatchObject({ value: false, status: "granted", source: "cache" });
 		expect(
 			resolveEntitlement(snapshot, "switch-enabled", false, "api"),
-		).toMatchObject({ value: true, variant: "enabled" });
+		).toMatchObject({ value: true, status: "granted" });
 		expect(
 			resolveEntitlement(snapshot, "switch-available", false, "api"),
 		).toMatchObject({ value: true });
@@ -55,19 +56,19 @@ describe("entitlement mapping", () => {
 	it("maps numeric and unlimited entitlements", () => {
 		expect(resolveEntitlement(snapshot, "seats", 0, "store")).toMatchObject({
 			value: 25,
-			reason: "CACHED",
+			status: "granted",
+			source: "store",
 		});
 		expect(resolveEntitlement(snapshot, "storage", 0, "relay")).toMatchObject({
 			value: Number.POSITIVE_INFINITY,
-			variant: "unlimited",
-			flagMetadata: { unlimited: true },
+			status: "granted",
 		});
 	});
 
 	it("maps string and object entitlements", () => {
 		expect(
 			resolveEntitlement(snapshot, "support", "basic", "api"),
-		).toMatchObject({ value: "priority", variant: "priority" });
+		).toMatchObject({ value: "priority", status: "granted" });
 		expect(
 			resolveEntitlement<Partial<ChargebeeEntitlement>>(
 				snapshot,
@@ -95,27 +96,28 @@ describe("entitlement mapping", () => {
 
 	it("fails closed for disabled, expired, missing, and mismatched values", () => {
 		expect(resolveEntitlement(snapshot, "disabled", false, "api")).toMatchObject(
-			{ value: false, reason: "DISABLED" },
+			{ value: false, status: "disabled" },
 		);
 		expect(resolveEntitlement(snapshot, "expired", false, "api")).toMatchObject({
 			value: false,
-			reason: "DISABLED",
+			status: "disabled",
 		});
 		expect(resolveEntitlement(snapshot, "missing", false, "api")).toMatchObject({
 			value: false,
-			errorCode: "FLAG_NOT_FOUND",
+			status: "error",
+			error: { code: "not-found" },
 		});
 		expect(resolveEntitlement(snapshot, "support", false, "api")).toMatchObject({
 			value: false,
-			errorCode: "TYPE_MISMATCH",
+			error: { code: "type-mismatch" },
 		});
 		expect(resolveEntitlement(snapshot, "support", 0, "api")).toMatchObject({
 			value: 0,
-			errorCode: "TYPE_MISMATCH",
+			error: { code: "type-mismatch" },
 		});
 		expect(
 			resolveEntitlement(snapshot, "switch-enabled", "basic", "api"),
-		).toMatchObject({ value: "basic", errorCode: "PARSE_ERROR" });
+		).toMatchObject({ value: "basic", error: { code: "type-mismatch" } });
 	});
 });
 
@@ -131,7 +133,7 @@ describe("target validation", () => {
 
 	it("ignores unrelated properties a caller's context carries", () => {
 		const context = {
-			targetingKey: "app-user-1",
+			userId: "app-user-1",
 			customerId: "customer-1",
 			plan: "pro",
 		};
@@ -149,7 +151,7 @@ describe("target validation", () => {
 	});
 
 	it("rejects a target with no usable identifier", () => {
-		expect(() => assertTarget({ targetingKey: "app-user-1" } as never)).toThrow(
+		expect(() => assertTarget({ userId: "app-user-1" } as never)).toThrow(
 			"requires a non-empty customerId or subscriptionId",
 		);
 		expect(() => assertTarget({ customerId: "" } as never)).toThrow(

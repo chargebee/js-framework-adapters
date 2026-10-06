@@ -3,7 +3,7 @@ import { ChargebeeEntitlements } from "../src/server";
 import type { ChargebeeEntitlementsClient } from "../src/server/loader";
 import type {
 	ChargebeeTarget,
-	EntitlementResolution,
+	EntitlementDetails,
 	EntitlementsClient,
 } from "../src/shared";
 import { Feature, setDefaultEntitlements } from "../src/shared";
@@ -104,7 +104,7 @@ describe("Feature", () => {
 		const details = await supportTier.getDetails(target);
 
 		expectTypeOf(details).toEqualTypeOf<
-			EntitlementResolution<{ featureId: string; value?: string }>
+			EntitlementDetails<{ featureId: string; value?: string }>
 		>();
 		expect(details.value).toMatchObject({
 			featureId: "support-tier",
@@ -112,15 +112,16 @@ describe("Feature", () => {
 		});
 	});
 
-	it("exposes the full resolution via getDetails", async () => {
+	it("exposes the status and entitlement via getDetails", async () => {
 		const seats = makeEntitlements().feature("licensed-seats", 0);
 
 		const details = await seats.getDetails(target);
 
 		expect(details).toMatchObject({
 			value: 25,
-			reason: "TARGETING_MATCH",
-			flagMetadata: { chargebeeFeatureId: "licensed-seats" },
+			status: "granted",
+			source: "api",
+			entitlement: { featureId: "licensed-seats", value: "25" },
 		});
 	});
 
@@ -131,16 +132,17 @@ describe("Feature", () => {
 		await expect(missing.get(target)).resolves.toBe(7);
 		await expect(missing.getDetails(target)).resolves.toMatchObject({
 			value: 7,
-			errorCode: "FLAG_NOT_FOUND",
+			status: "error",
+			error: { code: "not-found" },
 		});
 	});
 
 	it("prefers a bound client over the default one", async () => {
 		const calls: string[] = [];
 		const stub = (name: string, value: number): EntitlementsClient => ({
-			getValue: async () => {
+			getDetails: async () => {
 				calls.push(name);
-				return { value: value as never };
+				return { value: value as never, status: "granted" as const };
 			},
 		});
 		setDefaultEntitlements(stub("default", 1));
@@ -157,6 +159,28 @@ describe("Feature", () => {
 		await expect(seats.get(target)).resolves.toBe(25);
 	});
 
+	it("rejects a missing target on the server as invalid-target", async () => {
+		setDefaultEntitlements(makeEntitlements());
+		const seats = new Feature("licensed-seats", 0);
+
+		await expect(seats.getDetails()).resolves.toMatchObject({
+			value: 0,
+			status: "error",
+			error: {
+				code: "invalid-target",
+				message: expect.stringMatching(/customerId or subscriptionId/),
+			},
+		});
+	});
+
+	it("requires a target on features bound to a server client", async () => {
+		const seats = makeEntitlements().feature("licensed-seats", 0);
+
+		// @ts-expect-error A server feature needs a target.
+		await expect(seats.get()).resolves.toBe(0);
+		await expect(seats.get(target)).resolves.toBe(25);
+	});
+
 	it("throws a helpful error when no client is configured", async () => {
 		const seats = new Feature("licensed-seats", 0);
 
@@ -166,21 +190,27 @@ describe("Feature", () => {
 	});
 });
 
-describe("ChargebeeEntitlements.getValue", () => {
+describe("ChargebeeEntitlements.get", () => {
 	it("resolves every shape through a single method", async () => {
 		const entitlements = makeEntitlements();
 
 		await expect(
-			entitlements.getValue("licensed-seats", 0, target),
-		).resolves.toMatchObject({ value: 25 });
+			entitlements.get("licensed-seats", 0, target),
+		).resolves.toBe(25);
 		await expect(
-			entitlements.getValue("support-tier", "basic", target),
-		).resolves.toMatchObject({ value: "priority" });
+			entitlements.get("support-tier", "basic", target),
+		).resolves.toBe("priority");
 		await expect(
-			entitlements.getValue("advanced-reports", false, target),
-		).resolves.toMatchObject({ value: true });
+			entitlements.get("advanced-reports", false, target),
+		).resolves.toBe(true);
 		await expect(
-			entitlements.getValue("support-tier", {}, target),
-		).resolves.toMatchObject({ value: { featureId: "support-tier" } });
+			entitlements.get("support-tier", {}, target),
+		).resolves.toMatchObject({ featureId: "support-tier" });
+	});
+
+	it("returns the status and entitlement via getDetails", async () => {
+		await expect(
+			makeEntitlements().getDetails("licensed-seats", 0, target),
+		).resolves.toMatchObject({ value: 25, status: "granted" });
 	});
 });

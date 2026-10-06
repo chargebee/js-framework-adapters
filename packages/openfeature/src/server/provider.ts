@@ -10,7 +10,7 @@ import type {
 	Provider,
 	ResolutionDetails,
 } from "@openfeature/server-sdk";
-import { toResolutionDetails } from "../resolution";
+import { PendingAs, toResolutionDetails } from "../resolution";
 
 export type ChargebeeEntitlementsProviderOptions =
 	| ChargebeeEntitlementsOptions
@@ -20,7 +20,7 @@ export type ChargebeeEntitlementsProviderOptions =
  * An OpenFeature evaluation context is an untyped bag, so the Chargebee
  * identifiers are picked out of it here. `ChargebeeEntitlements` validates
  * what comes back and reports a missing or ambiguous target as
- * `INVALID_CONTEXT`.
+ * `invalid-target`, surfaced here as `INVALID_CONTEXT`.
  */
 const targetFrom = (context: EvaluationContext): ChargebeeTarget =>
 	({
@@ -89,7 +89,7 @@ export class ChargebeeEntitlementsProvider implements Provider {
 
 	/**
 	 * One evaluation path for all four flag types: the default value's runtime
-	 * type already tells `getValue` which shape to parse the entitlement into.
+	 * type already tells `getDetails` which shape to parse the entitlement into.
 	 */
 	private async resolve<T>(
 		flagKey: string,
@@ -97,11 +97,12 @@ export class ChargebeeEntitlementsProvider implements Provider {
 		context: EvaluationContext,
 	): Promise<ResolutionDetails<T>> {
 		return toResolutionDetails<T, ErrorCode>(
-			await this.entitlements.getValue(
+			await this.entitlements.getDetails(
 				flagKey,
 				defaultValue,
 				targetFrom(context),
 			),
+			PendingAs.Stale,
 		);
 	}
 }
