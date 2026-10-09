@@ -1,0 +1,98 @@
+body {
+	margin: 0;
+	font-family: system-ui, sans-serif;
+	color: #1f2328;
+	background: #f6f8fa;
+}
+
+main {
+	max-width: 760px;
+	margin: 0 auto;
+	padding: 2rem 1rem;
+}
+
+section {
+	margin-top: 1.5rem;
+	padding: 1rem 1.25rem;
+	background: #fff;
+	border: 1px solid #d0d7de;
+	border-radius: 8px;
+}
+
+h2 {
+	margin-top: 0;
+	font-size: 1.1rem;
+}
+
+table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+th,
+td {
+	padding: 0.4rem 0.5rem;
+	text-align: left;
+	border-bottom: 1px solid #eaeef2;
+}
+
+code {
+	font-size: 0.9em;
+}
+
+button {
+	margin-right: 0.5rem;
+	padding: 0.35rem 0.8rem;
+	cursor: pointer;
+}
+
+button:disabled {
+	cursor: not-allowed;
+}
+
+.profiles {
+	margin: 0 0 1rem;
+	padding: 0;
+	list-style: none;
+}
+
+.profiles li {
+	margin-bottom: 0.5rem;
+	padding: 0.6rem 0.8rem;
+	border: 1px solid #d0d7de;
+	border-radius: 6px;
+}
+
+.profiles li.current {
+	border-color: #1a7f37;
+	background: #f0fff4;
+}
+
+.profiles p {
+	margin: 0.25rem 0 0.5rem;
+}
+
+.notice {
+	padding: 0.6rem 1rem;
+	background: #fff8c5;
+	border: 1px solid #d4a72c;
+	border-radius: 8px;
+}
+
+.muted {
+	color: #656d76;
+}
+
+.granted {
+	color: #1a7f37;
+}
+
+.disabled,
+.error {
+	color: #cf222e;
+}
+
+.pending,
+.stale {
+	color: #9a6700;
+}
