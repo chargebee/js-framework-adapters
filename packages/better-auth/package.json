@@ -1,7 +1,7 @@
 {
   "name": "@chargebee/better-auth",
   "author": "DX Chargebee",
-  "version": "1.2.0",
+  "version": "1.3.0-alpha.3",
   "type": "module",
   "main": "dist/index.mjs",
   "types": "dist/index.d.mts",
@@ -64,12 +64,19 @@
   },
   "peerDependencies": {
     "@better-auth/core": "^1.4.18",
+    "@chargebee/entitlements": "^0.1.0-alpha.2",
     "better-auth": "^1.4.0",
     "better-call": "^1.1.7",
     "chargebee": "^3.23.1"
   },
+  "peerDependenciesMeta": {
+    "@chargebee/entitlements": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@better-auth/core": "^1.5.3",
+    "@chargebee/entitlements": "workspace:*",
     "@vitest/coverage-v8": "^4.0.18",
     "better-auth": "^1.5.3",
     "better-call": "^1.1.8",
