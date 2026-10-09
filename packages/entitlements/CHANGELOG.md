@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The web client calls `fetch` unbound. Browsers' native `fetch` threw
+  "Illegal invocation", so no relay snapshot could load.
 - No OpenFeature vocabulary remains in this package; `@chargebee/openfeature`
   maps the results instead. `EntitlementResolution` is now
   `EntitlementDetails`: `{ value, status, source?, entitlement?, error? }`.

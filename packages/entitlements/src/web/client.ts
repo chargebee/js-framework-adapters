@@ -188,7 +188,10 @@ export class ChargebeeEntitlements {
 		try {
 			const headers = new Headers(this.requestHeaders);
 			if (!headers.has("Accept")) headers.set("Accept", "application/json");
-			const response = await this.fetchImplementation(this.relayUrl, {
+
+			// Called unbound: browsers' fetch throws when `this` is not the window.
+			const fetchImplementation = this.fetchImplementation;
+			const response = await fetchImplementation(this.relayUrl, {
 				method: "GET",
 				cache: "no-store",
 				credentials: this.credentials,

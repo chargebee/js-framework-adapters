@@ -50,6 +50,28 @@ describe("ChargebeeEntitlements (web)", () => {
 		);
 	});
 
+	it("calls the global fetch without binding it to the client", async () => {
+		// Browsers' native fetch throws "Illegal invocation" unless `this` is the window.
+		vi.stubGlobal(
+			"fetch",
+			async function (this: unknown) {
+				if (this !== undefined && this !== globalThis) {
+					throw new TypeError("Illegal invocation");
+				}
+				return Response.json(snapshotWith("true"));
+			},
+		);
+		const client = new ChargebeeEntitlements({ relayUrl: "/api/entitlements" });
+
+		try {
+			await client.initialize();
+		} finally {
+			vi.unstubAllGlobals();
+		}
+
+		expect(client.get("sso", false)).toBe(true);
+	});
+
 	it("reports pending before the snapshot loads", () => {
 		const client = new ChargebeeEntitlements({
 			relayUrl: "/api/entitlements",
