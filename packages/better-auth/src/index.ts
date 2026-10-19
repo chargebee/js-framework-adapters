@@ -7,7 +7,9 @@ import {
 	cancelSubscriptionCallback,
 	createPortalSession,
 	createSubscription,
+	getEntitlements,
 	getWebhookEndpoint,
+	hasAccess,
 	listActiveSubscriptions,
 	subscriptionSuccess,
 	updateSubscription,
@@ -44,6 +46,8 @@ export const chargebee = <O extends ChargebeeOptions>(options: O) => {
 			cancelSubscriptionCallback: cancelSubscriptionCallback(options),
 			createPortalSession: createPortalSession(options),
 			listActiveSubscriptions: listActiveSubscriptions(options),
+			hasAccess: hasAccess(options),
+			getEntitlements: getEntitlements(options),
 		},
 		options: options as NoInfer<O>,
 		$ERROR_CODES: CHARGEBEE_ERROR_CODES,
@@ -208,11 +212,14 @@ export type ChargebeePlugin<O extends ChargebeeOptions> = ReturnType<
 
 // Re-export native Better Auth types for convenience
 export type { Organization } from "better-auth/plugins/organization";
+export { entitlementsMiddleware } from "./entitlements";
 export { CHARGEBEE_ERROR_CODES } from "./error-codes";
 export type {
+	BooleanFeature,
 	ChargebeeOptions,
 	ChargebeePlan,
 	ChargebeeWebhookEventBus,
+	EntitlementsAccess,
 	Subscription,
 	SubscriptionOptions,
 	SubscriptionStatus,

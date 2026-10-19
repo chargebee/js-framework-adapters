@@ -1,0 +1,3 @@
+# Standalone install root, separate from the repository's workspace.
+packages:
+  - .

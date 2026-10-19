@@ -1,3 +1,15 @@
+### Unreleased
+* * *
+
+### Feature:
+- Added entitlements, backed by `@chargebee/entitlements` (optional peer dependency). Pass a `ChargebeeEntitlements` client as the new `entitlements` option.
+- Added `auth.api.hasAccess` (`POST /entitlements/has-access`) for switch features and `auth.api.getEntitlements` (`GET /entitlements/list`), also on the client plugin.
+- Added `entitlementsMiddleware(options)`, which puts `hasAccess` and `getEntitlements` on `ctx.context.entitlements` in Better Auth endpoints.
+- Targets default to the user's or active organization's Chargebee customer. `subscriptionId` targets one subscription owned by the reference.
+- Added the `read-entitlements` `authorizeReference` action, the `ENTITLEMENTS_NOT_CONFIGURED` error code, and the `EntitlementsAccess` and `BooleanFeature` types.
+
+---
+
 ### v1.2.0 (2026-07-10)
 * * *
 

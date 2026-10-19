@@ -17,6 +17,7 @@ The Chargebee plugin integrates [Chargebee's](https://www.chargebee.com) subscri
 - Team subscription support with seats management
 - Hosted checkout and portal via Chargebee Hosted Pages
 - Self-service billing portal for managing payment methods, invoices, and subscriptions
+- Feature gating with Chargebee entitlements (`hasAccess`, `getEntitlements`)
 
 ## Requirements
 
@@ -568,6 +569,71 @@ await authClient.subscription.cancel({
 });
 ```
 
+### Entitlements
+
+Gate features on the signed-in user's or organization's [Chargebee entitlements](https://www.chargebee.com/docs/billing/2.0/entitlements/entitlements), backed by [`@chargebee/entitlements`](https://github.com/chargebee/js-framework-adapters/blob/main/packages/entitlements/README.md) and its caching:
+
+```bash
+pnpm add @chargebee/entitlements
+```
+
+```ts
+import { ChargebeeEntitlements } from "@chargebee/entitlements/server"
+
+chargebee({
+    chargebeeClient,
+    entitlements: new ChargebeeEntitlements({ chargebeeClient }),
+})
+```
+
+`hasAccess` takes switch features only, because other feature types need usage tracking to decide access. It returns `true` only when Chargebee grants the feature. Missing, disabled, and unavailable entitlements return the feature's default, which is `false` for a plain feature ID. `getEntitlements` returns every entitlement of the reference.
+
+**Server:**
+
+```ts
+const { hasAccess } = await auth.api.hasAccess({
+    headers,
+    body: { featureId: "advanced-reports" },
+})
+const entitlements = await auth.api.getEntitlements({ headers })
+```
+
+**Client:**
+
+```ts
+const { data } = await authClient.entitlements.hasAccess({ featureId: "advanced-reports" })
+const { data: entitlements } = await authClient.entitlements.list()
+```
+
+**Better Auth endpoints and plugins:** `entitlementsMiddleware` adds `ctx.context.entitlements` for the request:
+
+```ts
+import { Feature } from "@chargebee/entitlements"
+import { entitlementsMiddleware } from "@chargebee/better-auth"
+
+const reports = new Feature("advanced-reports", false)
+
+createAuthEndpoint("/reports", { method: "GET", use: [entitlementsMiddleware(chargebeeOptions)] }, async (ctx) => {
+    if (!(await ctx.context.entitlements.hasAccess(reports))) {
+        throw new APIError("FORBIDDEN")
+    }
+    return ctx.json(await ctx.context.entitlements.getEntitlements())
+})
+```
+
+All three accept the same optional fields as the subscription routes:
+
+| Field            | Target                                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------------------------ |
+| none             | The user's Chargebee customer, consolidated across their subscriptions.                                      |
+| `customerType`   | `"organization"` targets the active organization's customer. Requires `authorizeReference`.                  |
+| `referenceId`    | Another user or organization, authorized with `authorizeReference` and the `read-entitlements` action.       |
+| `subscriptionId` | That Chargebee subscription. Rejected with `403` unless it belongs to the reference.                         |
+
+A reference without a Chargebee customer has no entitlements.
+
+> **Note:** Subscription webhooks don't refresh entitlement snapshots yet, so plan changes take effect after `snapshotTtlMs` (5 minutes by default). To apply them sooner, call `entitlements.refreshSnapshot({ customerId })` from your own `webhookHandler`.
+
 ### Webhook Handling
 
 The plugin automatically processes common webhook events from Chargebee:
@@ -776,6 +842,7 @@ chargebee({
 | `getCustomerCreateParams`| `function` | Return additional params for `cb.customer.create` (e.g. `first_name`, `last_name`). Receives `user` and optional `ctx`. |
 | `onCustomerCreate`       | `function` | Callback called after a customer is created. Receives `{ chargebeeCustomer, user }`.          |
 | `webhookHandler`         | `function` | Callback receiving the webhook handler instance. Call `handler.on(EventType, fn)` to register typed event listeners. |
+| `entitlements`           | `ChargebeeEntitlements` | Entitlements client from `@chargebee/entitlements/server`. See [Entitlements](#entitlements). |
 | `subscription`           | `object`   | Subscription configuration. See [Subscription options](#subscription-options).                |
 | `organization`           | `object`   | Enable Organization Customer support. See [Organization options](#organization-options).      |
 

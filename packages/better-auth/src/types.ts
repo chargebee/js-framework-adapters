@@ -1,3 +1,9 @@
+import type {
+	ChargebeeEntitlement,
+	EntitlementsClient,
+	Feature,
+} from "@chargebee/entitlements";
+import type { ChargebeeEntitlements } from "@chargebee/entitlements/server";
 import type { Session, User } from "better-auth";
 import type { Organization } from "better-auth/plugins/organization";
 import type Chargebee from "chargebee";
@@ -40,7 +46,8 @@ export type AuthorizeReferenceAction =
 	| "list-subscription"
 	| "cancel-subscription"
 	| "restore-subscription"
-	| "billing-portal";
+	| "billing-portal"
+	| "read-entitlements";
 
 export type WithActiveOrganizationId = {
 	activeOrganizationId?: string;
@@ -185,6 +192,12 @@ export interface ChargebeeOptions {
 	 * When not set, events are processed synchronously within the request.
 	 */
 	webhookEventBus?: ChargebeeWebhookEventBus;
+	/**
+	 * Entitlements client backing `hasAccess` and `getEntitlements`, e.g.
+	 * `new ChargebeeEntitlements({ chargebeeClient })` from
+	 * `@chargebee/entitlements/server`.
+	 */
+	entitlements?: ChargebeeEntitlements;
 	subscription?: SubscriptionOptions;
 	organization?: {
 		enabled: boolean;
@@ -243,3 +256,17 @@ export interface SubscriptionItemRecord {
 export type WithChargebeeCustomerId = {
 	chargebeeCustomerId?: string;
 };
+
+/** A switch feature: the only kind that resolves to access without usage data. */
+export type BooleanFeature = Feature<boolean, EntitlementsClient>;
+
+/**
+ * Entitlements of the request's billing reference, e.g.
+ * `await ctx.context.entitlements.hasAccess("advanced-reports")`.
+ */
+export interface EntitlementsAccess {
+	/** `true` only when Chargebee grants the feature; otherwise its default. */
+	hasAccess(feature: string | BooleanFeature): Promise<boolean>;
+	/** Every entitlement of the reference; empty without a Chargebee customer. */
+	getEntitlements(): Promise<ChargebeeEntitlement[]>;
+}
