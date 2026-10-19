@@ -170,14 +170,41 @@ export class ChargebeeEntitlements {
 		defaultValue: T,
 		target: ChargebeeTarget,
 	): Promise<EntitlementDetails<T>> {
-		return this.evaluate(defaultValue, target, (result) =>
-			resolveEntitlement(
-				result.snapshot,
-				featureId,
-				defaultValue,
-				result.source,
-			),
+		return this.evaluate(
+			defaultValue,
+			() => this.getSnapshot(target),
+			(result) =>
+				resolveEntitlement(
+					result.snapshot,
+					featureId,
+					defaultValue,
+					result.source,
+				),
 		);
+	}
+
+	/**
+	 * Like {@link get}, but skips the cache and store and reads Chargebee, for
+	 * critical flows such as checkout. The result is written to the store and
+	 * the cache entry is evicted, so later reads pick it up.
+	 */
+	async getFromAPI<T>(
+		featureId: string,
+		defaultValue: T,
+		target: ChargebeeTarget,
+	): Promise<T> {
+		const details = await this.evaluate(
+			defaultValue,
+			() => this.fetchFromAPI(target),
+			(result) =>
+				resolveEntitlement(
+					result.snapshot,
+					featureId,
+					defaultValue,
+					result.source,
+				),
+		);
+		return details.value;
 	}
 
 	/**
@@ -313,11 +340,11 @@ export class ChargebeeEntitlements {
 
 	private async evaluate<T>(
 		defaultValue: T,
-		target: ChargebeeTarget,
+		load: () => Promise<EntitlementsSnapshotResult>,
 		resolve: (result: EntitlementsSnapshotResult) => EntitlementDetails<T>,
 	): Promise<EntitlementDetails<T>> {
 		try {
-			return resolve(await this.getSnapshot(target));
+			return resolve(await load());
 		} catch (error) {
 			if (error instanceof SnapshotPendingError) {
 				return { value: defaultValue, status: "pending" };
@@ -403,6 +430,41 @@ export class ChargebeeEntitlements {
 		void this.fetchAndPersistSnapshot(target, key, "request").catch(() => {
 			// Reported through onError inside fetchAndPersistSnapshot.
 		});
+	}
+
+	/**
+	 * A refresh already in flight may predate the change the caller cares
+	 * about, so it is cancelled rather than joined; otherwise it would
+	 * overwrite this result when it lands.
+	 */
+	private async fetchFromAPI(
+		target: ChargebeeTarget,
+	): Promise<EntitlementsSnapshotResult> {
+		const resolved = this.resolveTarget(target);
+		const key = this.cacheKey(resolved);
+		this.cancelInFlight(key);
+
+		let snapshot: ChargebeeEntitlementsSnapshot;
+		try {
+			snapshot = createEntitlementsSnapshot(
+				await this.loader.load(resolved),
+				this.snapshotTtlMs,
+			);
+		} catch (error) {
+			this.onError?.(error, { operation: "refresh", target: resolved });
+			throw error;
+		}
+
+		// Store first, then evict: a reader that misses the cache must find the
+		// new snapshot in the store, not refill the cache with the old one.
+		await this.write(this.durableStore, key, snapshot, resolved, "store-write");
+		await this.evictCache(key, resolved);
+		this.onSnapshotRefreshed?.({
+			target: resolved,
+			snapshot,
+			trigger: "request",
+		});
+		return { snapshot, source: "api" };
 	}
 
 	private fetchAndPersistSnapshot(

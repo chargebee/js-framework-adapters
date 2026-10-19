@@ -122,6 +122,16 @@ Chargebee outage.
 
 Cache and store read failures fall through to the next step and are reported through `onError`. Concurrent refreshes for one target are deduplicated, and a failed refresh waits `advanced.refreshBackoffMs` (10 seconds) before retrying.
 
+## Reading from the API
+
+When required, the `getFromAPI` method can be used to skip the cache and store, and fetch the entitlement directly from the Chargebee API.
+
+```ts
+await entitlements.getFromAPI("licensed-seats", 0, { customerId });
+```
+
+The fetched snapshot is written to the store and the cache entry is evicted, so later reads pick it up. Each call makes its own Chargebee request and replaces any refresh already in flight, so keep it off hot paths. When Chargebee fails, it returns the default instead of a cached value.
+
 ## Webhooks
 
 ```ts

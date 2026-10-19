@@ -479,6 +479,103 @@ describe("ChargebeeEntitlements", () => {
 		expect(customerRequest).toHaveBeenCalledTimes(1);
 	});
 
+	it("reads from the API, writes the store, and evicts the cache", async () => {
+		const { client, customerRequest } = makeClient([ssoPage]);
+		const cache = createMemoryEntitlementsCache();
+		const store = makeDurableStore();
+		const cacheRead = vi.spyOn(cache, "get");
+		const cacheWrite = vi.spyOn(cache, "set");
+		const evict = vi.spyOn(cache, "delete");
+		const entitlements = new ChargebeeEntitlements({
+			chargebeeClient: client,
+			cache,
+			durableStore: store,
+		});
+		await entitlements.writeSnapshot(
+			target,
+			createEntitlementsSnapshot([], 60_000),
+		);
+		cacheWrite.mockClear();
+
+		await expect(entitlements.getFromAPI("sso", false, target)).resolves.toBe(
+			true,
+		);
+		expect(customerRequest).toHaveBeenCalledTimes(1);
+		expect(cacheRead).not.toHaveBeenCalled();
+		expect(cacheWrite).not.toHaveBeenCalled();
+		expect(evict).toHaveBeenCalledWith(
+			"chargebee:entitlements:v1:customer:customer-1:consolidated",
+		);
+
+		await expect(
+			entitlements.getDetails("sso", false, target),
+		).resolves.toMatchObject({ value: true, source: "store" });
+	});
+
+	it("keeps an older in-flight refresh from overwriting an API read", async () => {
+		let release: (() => void) | undefined;
+		const pending = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let requestCount = 0;
+		const customerRequest = vi.fn(async () => {
+			requestCount += 1;
+			if (requestCount === 1) {
+				await pending;
+				return { list: [] };
+			}
+			return ssoPage;
+		});
+		const entitlements = new ChargebeeEntitlements({
+			chargebeeClient: {
+				customerEntitlement: { entitlementsForCustomer: customerRequest },
+				subscriptionEntitlement: {
+					subscriptionEntitlementsForSubscription: vi.fn(),
+				},
+			} as unknown as ChargebeeEntitlementsClient,
+			durableStore: makeDurableStore(),
+			refreshOnMiss: "background",
+		});
+
+		await entitlements.get("sso", false, target);
+		await vi.waitFor(() => expect(customerRequest).toHaveBeenCalledTimes(1));
+
+		await expect(entitlements.getFromAPI("sso", false, target)).resolves.toBe(
+			true,
+		);
+
+		release?.();
+		await new Promise((resolve) => setTimeout(resolve, 5));
+		await expect(entitlements.get("sso", false, target)).resolves.toBe(true);
+	});
+
+	it("returns the default when the API read fails", async () => {
+		const customerRequest = vi
+			.fn()
+			.mockResolvedValueOnce(ssoPage)
+			.mockRejectedValueOnce(new Error("chargebee unavailable"));
+		const onError = vi.fn();
+		const entitlements = new ChargebeeEntitlements({
+			chargebeeClient: {
+				customerEntitlement: { entitlementsForCustomer: customerRequest },
+				subscriptionEntitlement: {
+					subscriptionEntitlementsForSubscription: vi.fn(),
+				},
+			} as unknown as ChargebeeEntitlementsClient,
+			cache: createMemoryEntitlementsCache(),
+			onError,
+		});
+		await entitlements.refreshSnapshot(target);
+
+		await expect(entitlements.getFromAPI("sso", false, target)).resolves.toBe(
+			false,
+		);
+		expect(onError).toHaveBeenCalledWith(expect.any(Error), {
+			operation: "refresh",
+			target,
+		});
+	});
+
 	it("warns through the configured logger when Chargebee omits a feature_id", async () => {
 		const logger = { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() };
 		const { client } = makeClient([

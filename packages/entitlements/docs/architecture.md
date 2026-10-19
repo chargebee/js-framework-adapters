@@ -73,6 +73,9 @@ Cache read throws → `onError(cache-read)`, treated as a miss. Store returns an
 ### 6. Webhook refresh
 Chargebee → Webhook → `refreshSnapshot(target)`: cancel in-flight request refreshes, evict cache, fetch, persist to store and cache, `onSnapshotRefreshed({ trigger: "explicit" })`. A memory cache evicts only in the handling process. Alternatives: `writeSnapshot` (snapshot built from the payload), `deleteSnapshot` (clears cache and store).
 
+### 6b. API read
+`getFromAPI(featureId, default, target)`: cancel in-flight refreshes, skip cache and store, fetch, write store, evict cache, `onSnapshotRefreshed({ trigger: "request" })`. No backoff, no fallback: failure → default, `onError(refresh)`.
+
 ### 7. Browser relay
 Browser → `GET /api/entitlements` → `createEntitlementsRelayHandler` → `getRelaySnapshot(target)` (same resolution chain) → `expiresAt` rewritten to `now + relayTtlMs` (60s) → `200` with `Cache-Control: no-store`. Guards: non-GET 405, identity query params 400, no session 401, failure 502. The browser evaluates synchronously: no snapshot → `pending`; expired → `stale` plus one background refetch.
 
