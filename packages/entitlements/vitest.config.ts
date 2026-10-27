@@ -4,6 +4,9 @@ export default defineConfig({
 	test: {
 		clearMocks: true,
 		globals: true,
+		benchmark: {
+			include: ["bench/**/*.bench.ts"],
+		},
 		coverage: {
 			provider: "v8",
 			reporter: ["text", "json", "html"],

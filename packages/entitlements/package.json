@@ -81,9 +81,12 @@
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
-    "typecheck": "tsc --project tsconfig.json",
-    "test": "vitest run",
-    "test:watch": "vitest",
+		"typecheck": "tsc --project tsconfig.json && tsc --project bench/tsconfig.json",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"bench": "vitest bench --run --reporter=default",
+		"bench:up": "docker compose -f bench/docker-compose.yml up -d --wait",
+		"bench:down": "docker compose -f bench/docker-compose.yml down -v",
     "coverage": "vitest run --coverage",
     "lint:package": "publint run --strict",
     "lint:types": "attw --profile esm-only --pack ."
@@ -97,14 +100,16 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
     "@types/node": "22.15.2",
-    "@vitest/coverage-v8": "^4.0.18",
+    "@types/pg": "^8.23.1",
+    "@vitest/coverage-v8": "^5.0.5",
     "chargebee": "^3.30.0",
     "ioredis": "^6.0.0",
     "next": "^16.3.0",
+    "pg": "^8.23.1",
     "publint": "^0.3.23",
     "tsdown": "^0.20.3",
     "typescript": "^5.9.2",
-    "vitest": "^4.0.18"
+    "vitest": "^5.0.5"
   },
   "peerDependencies": {
     "chargebee": "^3.30.0",
