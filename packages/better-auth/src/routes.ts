@@ -6,6 +6,7 @@ import {
 } from "better-auth/api";
 import type { Organization } from "better-auth/plugins/organization";
 import { z } from "zod";
+import { entitlementsMiddleware } from "./entitlements";
 import { CHARGEBEE_ERROR_CODES } from "./error-codes";
 import { referenceMiddleware, sessionMiddleware } from "./middleware";
 import type {
@@ -1248,5 +1249,57 @@ export function cancelSubscription(options: ChargebeeOptions) {
 				});
 			}
 		},
+	);
+}
+
+/** Fields picking the billing reference, shared by the entitlement endpoints. */
+const entitlementTargetSchema = z.object({
+	referenceId: z.string().optional(),
+	subscriptionId: z.string().optional(),
+	customerType: z.enum(["user", "organization"]).optional(),
+});
+
+/**
+ * Whether the reference is granted a switch feature. Missing, disabled, and
+ * unavailable entitlements deny access.
+ */
+export function hasAccess(options: ChargebeeOptions) {
+	return createAuthEndpoint(
+		"/entitlements/has-access",
+		{
+			method: "POST",
+			body: entitlementTargetSchema.extend({ featureId: z.string().min(1) }),
+			metadata: {
+				openapi: {
+					operationId: "hasAccess",
+				},
+			},
+			use: [entitlementsMiddleware(options)],
+		},
+		async (ctx) => {
+			const granted = await ctx.context.entitlements.hasAccess(
+				ctx.body.featureId,
+			);
+
+			return ctx.json({ hasAccess: granted });
+		},
+	);
+}
+
+/** Every entitlement of the reference; empty without a Chargebee customer. */
+export function getEntitlements(options: ChargebeeOptions) {
+	return createAuthEndpoint(
+		"/entitlements/list",
+		{
+			method: "GET",
+			query: entitlementTargetSchema.optional(),
+			metadata: {
+				openapi: {
+					operationId: "getEntitlements",
+				},
+			},
+			use: [entitlementsMiddleware(options)],
+		},
+		async (ctx) => ctx.json(await ctx.context.entitlements.getEntitlements()),
 	);
 }

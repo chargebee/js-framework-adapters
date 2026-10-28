@@ -1,0 +1,41 @@
+name: entitlements-bench
+
+# Toxiproxy sits between the benchmarks and each service, so network latency
+# is injected per service (REDIS_DELAY_MS, POSTGRES_DELAY_MS):
+#
+#   vitest bench ──► toxiproxy :16379 ──► redis :6379
+#                └─► toxiproxy :15432 ──► postgres :5432
+#                └─► toxiproxy :8474  (control API)
+services:
+  redis:
+    image: redis:8-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      retries: 30
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: entitlements
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-U", "postgres", "-d", "entitlements"]
+      interval: 2s
+      retries: 30
+
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.12.0
+    command: ["-host", "0.0.0.0", "-config", "/config/toxiproxy.json"]
+    volumes:
+      - ./toxiproxy.json:/config/toxiproxy.json:ro
+    ports:
+      - "8474:8474"
+      - "16379:16379"
+      - "15432:15432"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy

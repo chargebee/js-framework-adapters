@@ -20,4 +20,6 @@ export const CHARGEBEE_ERROR_CODES = defineErrorCodes({
 		"Organization subscriptions require authorizeReference callback to be configured",
 	ORGANIZATION_REFERENCE_ID_REQUIRED:
 		"Reference ID is required. Provide referenceId or set activeOrganizationId in session",
+	ENTITLEMENTS_NOT_CONFIGURED:
+		"Entitlements require the entitlements option in your chargebee plugin config",
 });
