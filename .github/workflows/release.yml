@@ -25,8 +25,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Release tag "@chargebee/entitlements@0.1.0" -> package "@chargebee/entitlements"
+      - name: Resolve package
+        run: echo "PACKAGE=${RELEASE_TAG%@*}" >> "$GITHUB_ENV"
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+
+      # "..." also builds the workspace dependencies of the package
       - name: Build
-        run: pnpm build
+        run: pnpm --filter "${PACKAGE}..." build
 
       - name: Lint
         run: pnpm lint
@@ -43,4 +50,4 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish
-        run: pnpm publish --recursive --no-git-checks --access public --tag "$TAG"
+        run: pnpm publish --filter "$PACKAGE" --no-git-checks --access public --tag "$TAG"
