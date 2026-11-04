@@ -204,3 +204,24 @@ Before the first load, evaluations return `pending`. Expired snapshots return de
 - Node.js is the supported Next.js runtime.
 - Call `entitlements.close()` when a long-lived process shuts down.
 - For OpenFeature SDKs, use [`@chargebee/openfeature`](https://github.com/chargebee/js-framework-adapters/blob/main/packages/openfeature/README.md). It shares this package's caching and only maps `status` and `error.code` onto OpenFeature reasons and error codes.
+
+## Benchmarks
+
+The following benchmarks test the performance of the `@chargebee/entitlements` package for different caching scenarios. The results below come from an ECS Fargate task using ElastiCache Redis, RDS Postgres and a live Chargebee test site. All times are in milliseconds.
+
+**Snapshot stored** (200 samples per scenario)
+
+| Scenario | Ops/s | Min | Mean | p75 | p99 | Max |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Cache hit: Redis | 930.81 | 1.02 | 1.08 | 1.09 | 1.15 | 1.22 |
+| Store hit: Redis miss, Postgres | 272.69 | 3.39 | 3.69 | 3.72 | 4.40 | 7.32 |
+
+**Snapshot missing** (50 samples per scenario)
+
+| Scenario | Ops/s | Min | Mean | p75 | p99 | Max |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Cold miss, background: `pending` | 323.41 | 2.86 | 3.10 | 3.14 | 4.03 | 4.16 |
+| Cold miss, blocking: Chargebee | 18.45 | 34.58 | 59.36 | 72.84 | 115.46 | 138.57 |
+| `getFromAPI`: Chargebee | 20.89 | 31.28 | 53.17 | 68.03 | 90.73 | 91.91 |
+
+The benchmarks can be run with `pnpm bench` against a local Redis and Postgres server, or as an ECS task which talks to provisioned infra. See `bench/infra` for more details.

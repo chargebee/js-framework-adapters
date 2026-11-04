@@ -1,0 +1,25 @@
+# Copy to terraform.tfvars and customize.
+
+aws_profile = "my-aws-profile"
+# region    = "us-east-1"
+
+# Prefix for the resources this stack creates.
+name_prefix = "acme"
+
+# Existing infrastructure to benchmark against.
+cluster_name           = "acme-cluster"        # ECS cluster the tasks run in
+service_name           = "acme-app"            # ECS service whose subnets and security group the tasks borrow
+redis_cluster_id       = "acme-redis"          # single-node ElastiCache cluster
+db_instance_identifier = "acme-db"             # RDS Postgres instance
+db_secret_name         = "acme-db-credentials" # JSON: host, port, username, password, dbname
+
+# Redis database the run flushes (default 1; most apps use 0).
+# redis_database = 1
+
+# Benchmark against a Chargebee test site instead of the mock. Set the site and
+# API key afterwards (see chargebee.tf).
+# chargebee_mode = "live"
+
+# Optional task sizing (valid Fargate combinations only):
+# bench_cpu    = 1024
+# bench_memory = 2048
