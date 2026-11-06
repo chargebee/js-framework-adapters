@@ -1,5 +1,10 @@
 import Chargebee, { type HttpClientInterface } from "chargebee";
 
+/** Real SDK against a Chargebee test site. */
+export function createLiveChargebee(site: string, apiKey: string): Chargebee {
+	return new Chargebee({ site, apiKey });
+}
+
 /**
  * Chargebee SDK whose HTTP round trip is replaced by a canned one-page
  * response after `delayMs`. Every customer is on the same plan.

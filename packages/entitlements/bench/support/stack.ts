@@ -10,13 +10,17 @@ import {
 	type ChargebeeEntitlementsOptions,
 } from "../../src/server";
 import type { ChargebeeTarget } from "../../src/shared";
-import { createMockChargebee } from "./chargebee";
+import { ensureBenchFixtures } from "./bootstrap";
+import { createLiveChargebee, createMockChargebee } from "./chargebee";
 import {
 	CHARGEBEE_DELAY_MS,
+	LIVE_CHARGEBEE,
 	POSTGRES_DELAY_MS,
+	POSTGRES_PROXIED,
 	POSTGRES_URL,
 	ProxyName,
 	REDIS_DELAY_MS,
+	REDIS_PROXIED,
 	REDIS_URL,
 } from "./config";
 import { setLatency } from "./network";
@@ -26,7 +30,8 @@ import { createPostgresStore, migrate } from "./postgres";
 const SNAPSHOT_TTL_MS = 60 * 60 * 1000;
 
 /**
- * Production-shaped setup: Redis cache, Postgres store, mock Chargebee.
+ * Production-shaped setup: Redis cache, Postgres store, mock Chargebee
+ * (or a test site when configured).
  *
  *   ChargebeeEntitlements ──► Redis ──► Postgres ──► Chargebee (mock)
  *
@@ -45,7 +50,9 @@ export class BenchStack {
 		this.cache = createRedisEntitlementsCache(redis);
 
 		const options: ChargebeeEntitlementsOptions = {
-			chargebeeClient: createMockChargebee(CHARGEBEE_DELAY_MS),
+			chargebeeClient: LIVE_CHARGEBEE
+				? createLiveChargebee(LIVE_CHARGEBEE.site, LIVE_CHARGEBEE.apiKey)
+				: createMockChargebee(CHARGEBEE_DELAY_MS),
 			cache: this.cache,
 			durableStore: createPostgresStore(pool),
 			snapshotTtlMs: SNAPSHOT_TTL_MS,
@@ -72,8 +79,20 @@ export class BenchStack {
 	}
 
 	static async start(): Promise<BenchStack> {
-		await setLatency(ProxyName.Redis, REDIS_DELAY_MS);
-		await setLatency(ProxyName.Postgres, POSTGRES_DELAY_MS);
+		if (LIVE_CHARGEBEE) {
+			await ensureBenchFixtures(
+				createLiveChargebee(LIVE_CHARGEBEE.site, LIVE_CHARGEBEE.apiKey),
+			);
+		}
+
+		// Only the default URLs go through Toxiproxy.
+		if (REDIS_PROXIED) {
+			await setLatency(ProxyName.Redis, REDIS_DELAY_MS);
+		}
+
+		if (POSTGRES_PROXIED) {
+			await setLatency(ProxyName.Postgres, POSTGRES_DELAY_MS);
+		}
 
 		const redis = new Redis(REDIS_URL);
 		const pool = new Pool({ connectionString: POSTGRES_URL });

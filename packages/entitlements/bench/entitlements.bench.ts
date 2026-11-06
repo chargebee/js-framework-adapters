@@ -5,22 +5,27 @@ import type {
 	EntitlementStatus,
 	SnapshotSource,
 } from "../src/shared";
+import { LIVE_SEATS_FEATURE_ID } from "./support/bootstrap";
 import {
 	CHARGEBEE_DELAY_MS,
+	CUSTOMER_IDS,
+	LIVE_CHARGEBEE,
 	POSTGRES_DELAY_MS,
 	REDIS_DELAY_MS,
 } from "./support/config";
 import { BenchStack } from "./support/stack";
 
-const FEATURE_ID = "licensed-seats";
+const FEATURE_ID = LIVE_CHARGEBEE ? LIVE_SEATS_FEATURE_ID : "licensed-seats";
 const DEFAULT_SEATS = 0;
 
 // Each scenario owns a target, so interleaved iterations can't disturb each other.
-const CACHE_HIT: ChargebeeTarget = { customerId: "cust_cache_hit" };
-const STORE_HIT: ChargebeeTarget = { customerId: "cust_store_hit" };
-const BLOCKING_MISS: ChargebeeTarget = { customerId: "cust_blocking_miss" };
-const BACKGROUND_MISS: ChargebeeTarget = { customerId: "cust_background_miss" };
-const FROM_API: ChargebeeTarget = { customerId: "cust_from_api" };
+const [CACHE_HIT_ID, STORE_HIT_ID, BLOCKING_MISS_ID, BACKGROUND_MISS_ID, FROM_API_ID] =
+	CUSTOMER_IDS;
+const CACHE_HIT: ChargebeeTarget = { customerId: CACHE_HIT_ID };
+const STORE_HIT: ChargebeeTarget = { customerId: STORE_HIT_ID };
+const BLOCKING_MISS: ChargebeeTarget = { customerId: BLOCKING_MISS_ID };
+const BACKGROUND_MISS: ChargebeeTarget = { customerId: BACKGROUND_MISS_ID };
+const FROM_API: ChargebeeTarget = { customerId: FROM_API_ID };
 
 // `bench.compare` interleaves iterations, so a time budget would make fast
 // scenarios wait on slow ones. Fixed counts keep runs bounded instead.
@@ -32,19 +37,23 @@ const STORED_RUN = {
 };
 const MISSING_RUN = {
 	time: 0,
-	iterations: 20,
+	iterations: 50,
 	warmupTime: 0,
 	warmupIterations: 3,
 };
 const TIMEOUT_MS = 5 * 60 * 1000;
 
-const LATENCY = `redis +${REDIS_DELAY_MS}ms, postgres +${POSTGRES_DELAY_MS}ms, chargebee ${CHARGEBEE_DELAY_MS}ms`;
+const CHARGEBEE_LABEL = LIVE_CHARGEBEE
+	? `chargebee ${LIVE_CHARGEBEE.site}`
+	: `chargebee ${CHARGEBEE_DELAY_MS}ms`;
+const LATENCY = `redis +${REDIS_DELAY_MS}ms, postgres +${POSTGRES_DELAY_MS}ms, ${CHARGEBEE_LABEL}`;
 
 let stack: BenchStack;
 
+// Covers first-run fixture creation on a real site.
 beforeAll(async () => {
 	stack = await BenchStack.start();
-});
+}, TIMEOUT_MS);
 
 afterAll(async () => {
 	await stack?.close();

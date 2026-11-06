@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+**/coverage
+**/.terraform
+**/*.tfstate*
+.git
+packages/entitlements/examples
+packages/entitlements/bench/infra
